@@ -102,6 +102,27 @@ export class Hud {
     else if (flight.inTrees) { prompt = blink ? 'IN THE TREES – BURN' : ''; color = RED; }
     else if (b.propane <= 0 && flight.phase === 'air') { prompt = 'Propane gone – hold BURN for the last vapour'; color = AMBER; }
     if (prompt) this.text(prompt, w / 2 - 10, 108, 18, color, 'center', 800, FONT, w - 110);
+    // the track leads into a power line (GDD §7)
+    if (flight.powerAhead !== null && !st.threat) {
+      const t = flight.powerAhead;
+      if (blink || t > 10) this.text(`POWER LINE AHEAD · ${Math.ceil(t)} s`, w / 2 - 10, 162, 19, t > 10 ? AMBER : RED, 'center', 900, TITLE, w - 110);
+    }
+    // a balloon on a collision course: where it is and when
+    const th = st.threat;
+    if (th) {
+      const label = { above: 'BALLOON ABOVE', below: 'BALLOON BELOW', level: 'BALLOON AHEAD' }[th.where];
+      if (blink || th.time > 6) this.text(`${label} · ${Math.ceil(th.time)} s`, w / 2 - 10, 162, 19, RED, 'center', 900, TITLE, w - 110);
+      if (th.on) {
+        const mx = th.x / this.scale, my = th.y / this.scale;
+        c.save();
+        c.strokeStyle = RED;
+        c.lineWidth = 3;
+        c.beginPath();
+        c.arc(mx, my, 30 + (blink ? 4 : 0), 0, Math.PI * 2);
+        c.stroke();
+        c.restore();
+      }
+    }
     // close to the ground: the sink rate and the landing it would be now
     if (flight.phase === 'air' && flight.agl < 40) {
       const sink = Math.max(0, -b.vy), r = rate(sink);

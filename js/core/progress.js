@@ -1,18 +1,28 @@
-// Records (GDD §6.5, §13.5): the best score per country × propane preset, with the distance and the rating
-// it came from, in localStorage. Storage can be unavailable (private mode, blocked site data): everything
-// still works, nothing is kept.
+// Records and settings (GDD §6.5, §13.5): the best score per country × propane preset, with the distance and
+// the rating it came from, the last preset chosen and the settings, in localStorage. Storage can be unavailable
+// (private mode, blocked site data): everything still works, nothing is kept.
 
 const KEY = 'hotair.progress.v1';
 
+export const DEFAULT_SETTINGS = {
+  sound: true,
+  haptics: true,
+  toggleBurn: false,    // tap to start and tap to stop the burner, instead of holding (GDD §4.3)
+  leftHanded: false,    // BURN under the left thumb, VENT under the right
+};
+
 export function loadProgress() {
+  let p = null;
   try {
-    const p = JSON.parse(localStorage.getItem(KEY));
-    if (p && typeof p.records === 'object') return p;
+    p = JSON.parse(localStorage.getItem(KEY));
   } catch { /* storage unavailable or corrupt */ }
-  return { records: {} };
+  if (!p || typeof p.records !== 'object') p = { records: {} };
+  p.settings = { ...DEFAULT_SETTINGS, ...p.settings };
+  p.preset ??= 'standard';
+  return p;
 }
 
-function save(p) {
+export function saveProgress(p) {
   try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* storage unavailable */ }
 }
 
@@ -23,6 +33,6 @@ export function recordFlight(p, key, { score, distance, rating }, seed) {
   const old = p.records[key];
   if (score <= 0 || (old && old.score >= score)) return false;
   p.records[key] = { score, distance: Math.round(distance), rating, seed };
-  save(p);
+  saveProgress(p);
   return true;
 }

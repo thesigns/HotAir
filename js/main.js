@@ -1,11 +1,12 @@
 import * as THREE from 'three';
-import { BALLOON, LANDING, PROPANE, SIM, VIEW, WORLD } from './config.js';
+import { BALLOON, COAST, LANDING, POLDER, PROPANE, SIM, VIEW, WORLD } from './config.js';
 import { Flight } from './core/flight.js';
+import { Fleet } from './core/fleet.js';
 import { Wind } from './core/wind.js';
 import { Input } from './core/input.js';
-import { loadProgress, recordFlight, recordKey } from './core/progress.js';
+import { loadProgress, recordFlight, recordKey, saveProgress } from './core/progress.js';
 import { clamp, dampAngle, formatMeters } from './core/utils.js';
-import { Polder } from './world/polder.js';
+import { Polder, coastFor } from './world/polder.js';
 import { PolderView } from './world/polderView.js';
 import { Props } from './world/props.js';
 import { createSky, paintSky } from './world/sky.js';
@@ -39,11 +40,17 @@ paintSky(sky, WORLD.skyTop, fogColor);
 scene.add(sky);
 // far beyond the chunks: a plain polder green under the haze
 const farGround = new THREE.Mesh(new THREE.PlaneGeometry(12000, 12000).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0x7aa44c }));
-farGround.position.y = -0.4;
+farGround.position.y = -1;
 scene.add(farGround);
+// and the sea beyond the coast, when there is one
+const farSea = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0x5d8aa3 }));
+farSea.position.y = -0.7;
+scene.add(farSea);
 
 const balloonModel = createBalloon();
 scene.add(balloonModel);
+// the other balloons' models, reused from flight to flight
+const fleetModels = [];
 const props = new Props(scene, sunDir);
 
 // ---------- game systems ----------
@@ -51,8 +58,8 @@ const input = new Input($('game'));
 const sound = new Sound();
 const hud = new Hud($('hud'));
 const progress = loadProgress();
-const preset = PROPANE.presets[PROPANE.preset];
-const KEY = recordKey(COUNTRY, PROPANE.preset);
+const preset = () => PROPANE.presets[progress.preset] ?? PROPANE.presets.standard;
+const recKey = () => recordKey(COUNTRY, progress.preset);
 
 const game = {
   mode: 'menu',     // menu | playing | paused | results
@@ -69,9 +76,17 @@ const surfaceWind = {};
 function newWorld(seed) {
   game.seed = seed;
   if (view) view.dispose();
-  polder = new Polder(seed);
   wind = new Wind(seed);
-  flight = new Flight(polder, wind, PROPANE.cylinder * preset.cylinders, onFlightEvent);
+  const w = wind.at(150, 0, {});
+  polder = new Polder(seed, { coast: coastFor(seed, w.dir + Math.PI) });
+  placeSea(polder.coast);
+  game.seaSaid = false;
+  flight = new Flight(polder, wind, PROPANE.cylinder * preset().cylinders, onFlightEvent);
+  flight.fleet = new Fleet(polder, wind, seed, flight.x0, flight.z0);
+  flight.fleet.list.forEach((a, i) => {
+    if (!fleetModels[i]) { fleetModels[i] = createBalloon(1 + i, false); scene.add(fleetModels[i]); }
+  });
+  game.menuT = 0;
   view = new PolderView(polder, scene);
   view.update(flight.x0, flight.z0, true, 900);
   props.reset(flight);
@@ -80,6 +95,17 @@ function newWorld(seed) {
 }
 
 const randomSeed = () => 1 + Math.floor(Math.random() * 999999);
+
+// The far sea: a big plane from the beach outwards.
+function placeSea(c) {
+  farSea.visible = !!c;
+  if (!c) return;
+  const L = 40000, edge = c.n * POLDER.block + c.sign * COAST.beach;
+  const mid = edge + c.sign * L / 2;
+  farSea.scale.set(c.axis === 0 ? L : L * 2, 1, c.axis === 0 ? L * 2 : L);
+  farSea.position.x = c.axis === 0 ? mid : 0;
+  farSea.position.z = c.axis === 0 ? 0 : mid;
+}
 
 function syncPrev() {
   const b = flight.balloon;
@@ -118,7 +144,9 @@ function onFlightEvent(type, d) {
 }
 
 const RATING_TITLE = { EXCEPTIONAL: 'EXCEPTIONAL!', GOOD: 'GOOD LANDING', ROUGH: 'ROUGH LANDING', CRASH: 'CRASH' };
-const CRASH_SHORT = { water: 'A wet landing', house: 'You hit a farm', hard: 'Far too hard', trees: 'Into the trees, too fast' };
+const CRASH_SHORT = {
+  water: 'A wet landing', house: 'You hit a building', power: 'Power line!', glass: 'Through the glass', hard: 'Far too hard', trees: 'Into the trees, too fast', balloon: 'You touched another balloon',
+};
 
 // ---------- game flow ----------
 function startFlight(seed = randomSeed()) {
@@ -130,7 +158,7 @@ function startFlight(seed = randomSeed()) {
   hud.popup = null;
   hud.notice = null;
   setMode('playing');
-  hud.showRating('THE NETHERLANDS', `${preset.name} · ${preset.cylinders} cylinders`, '#fffcf4', 2.6);
+  hud.showRating('THE NETHERLANDS', `${preset().name} · ${cylinders(preset().cylinders)}`, '#fffcf4', 2.6);
 }
 
 function setMode(mode) {
@@ -140,8 +168,10 @@ function setMode(mode) {
   $('menu').classList.toggle('hidden', mode !== 'menu');
   $('pause').classList.toggle('hidden', mode !== 'paused');
   $('results').classList.toggle('hidden', mode !== 'results');
+  $('settings').classList.toggle('hidden', mode !== 'settings');
   $('controls').classList.toggle('hidden', mode !== 'playing');
-  if (mode === 'paused' || mode === 'menu') sound.suspend();
+  if (mode === 'paused' || mode === 'menu' || mode === 'settings') sound.suspend();
+  if (mode === 'settings') renderSettings();
   if (mode === 'playing') sound.resume();
   if (mode === 'menu') renderMenu();
 }
@@ -153,15 +183,71 @@ function togglePause() {
 
 const bestText = (rec) => (rec ? `Best ${formatMeters(rec.score)} · ${formatMeters(rec.distance)} m, ${rec.rating.toLowerCase()}` : '');
 
+const cylinders = (n) => `${n} cylinder${n > 1 ? 's' : ''}`;
+
+// The propane presets (GDD §5.3), each with its own record.
 function renderMenu() {
-  $('menu-preset').textContent = `${preset.name} · ${preset.cylinders} cylinders`;
-  $('menu-best').textContent = bestText(progress.records[KEY]);
+  const list = $('presets');
+  list.replaceChildren();
+  for (const [key, p] of Object.entries(PROPANE.presets)) {
+    const btn = document.createElement('button');
+    btn.className = `preset${key === progress.preset ? ' on' : ''}`;
+    const rec = progress.records[recordKey(COUNTRY, key)];
+    const name = document.createElement('b');
+    name.textContent = p.name;
+    const sub = document.createElement('small');
+    sub.textContent = cylinders(p.cylinders);
+    const best = document.createElement('small');
+    best.textContent = rec ? `best ${formatMeters(rec.score)}` : '–';
+    btn.append(name, sub, best);
+    btn.addEventListener('click', () => {
+      progress.preset = key;
+      saveProgress(progress);
+      renderMenu();
+    });
+    list.appendChild(btn);
+  }
+}
+
+// Settings (GDD §4.3): only things that don't change the score.
+let settingsFrom = 'menu';
+function openSettings() {
+  settingsFrom = game.mode;
+  setMode('settings');
+}
+
+function renderSettings() {
+  for (const el of document.querySelectorAll('#settings .toggle')) {
+    const on = progress.settings[el.dataset.key];
+    el.classList.toggle('on', on);
+    el.querySelector('b').textContent = on ? 'ON' : 'OFF';
+  }
+}
+
+function applySettings() {
+  const s = progress.settings;
+  sound.enabled = s.sound;
+  input.haptics = s.haptics;
+  input.toggleBurn = s.toggleBurn;
+  document.body.classList.toggle('left-handed', s.leftHanded);
+}
+
+for (const el of document.querySelectorAll('#settings .toggle')) {
+  el.addEventListener('click', () => {
+    progress.settings[el.dataset.key] = !progress.settings[el.dataset.key];
+    saveProgress(progress);
+    applySettings();
+    renderSettings();
+  });
 }
 
 const RESULT_TITLE = { EXCEPTIONAL: 'Exceptional!', GOOD: 'Good landing', ROUGH: 'Rough landing', CRASH: 'Crash' };
 const MESSAGES = {
   water: () => 'A wet landing. Ditches and canals are everywhere – land on dry ground.',
-  house: () => 'You hit a farm. Keep clear of the buildings when you come down low.',
+  house: () => 'You hit a building. Keep clear of them when you come down low.',
+  glass: () => 'You came down on a greenhouse. Glass roofs are no place to land.',
+  power: () => 'You flew into a power line – the deadliest danger in ballooning. Climb well above the wires, or stay clear of them.',
+  balloon: () => 'You touched another balloon. Look above and below before you climb or sink through the height of another one.',
   hard: (r) => `You hit the ground at ${r.sink.toFixed(1)} m/s. Burn before the ground to soften the touchdown.`,
   trees: (r) => (r.rating === 'CRASH' ? 'You came down into the trees too fast.' : 'You came down in the trees.'),
   hedge: () => 'The basket was dragged into the trees. Hold VENT right after the touchdown.',
@@ -178,9 +264,9 @@ function showResults() {
   $('res-landing').textContent = `${r.rating.toLowerCase()} × ${LANDING.mult[r.rating]}`;
   $('res-landing').style.color = color;
   $('res-score').textContent = formatMeters(r.score);
-  const isNew = recordFlight(progress, KEY, r, game.seed);
+  const isNew = recordFlight(progress, recKey(), r, game.seed);
   $('res-badge').textContent = isNew ? 'NEW RECORD!' : '';
-  const rec = progress.records[KEY];
+  const rec = progress.records[recKey()];
   $('res-best').textContent = `${rec && !isNew ? bestText(rec) + ' · ' : ''}seed ${game.seed}`;
 }
 
@@ -243,6 +329,39 @@ function resize() {
   hud.resize();
 }
 
+// The soundscape (GDD §11): what is on the ground below, fading with height; the crew warns about the sea.
+const near = {};
+let ambientT = 0;
+function ambient(dt) {
+  ambientT -= dt;
+  if (ambientT > 0 || game.mode !== 'playing') return;
+  ambientT = 0.5;
+  const b = flight.balloon;
+  polder.sounds(b.x, b.z, 700, near);
+  sound.ambient({ agl: flight.agl, ...near });
+  if (!game.seaSaid && flight.phase === 'air' && near.sea < 450) {
+    const s0 = polder.coastS(b.x, b.z), s1 = polder.coastS(b.x + b.vx, b.z + b.vz);
+    if (s1 > s0) {
+      game.seaSaid = true;
+      radio('That\'s the sea ahead! Land before the beach runs out.', '#ffc53d');
+    }
+  }
+}
+
+// The balloon on a collision course, on the screen (CSS px) – or null.
+const _m = new THREE.Vector3();
+function threatMarker() {
+  const th = flight.threat;
+  if (!th || game.mode !== 'playing') return null;
+  const b = th.a.b;
+  _m.set(b.x, b.y + BALLOON.centre, b.z).project(camera);
+  const on = _m.z < 1 && Math.abs(_m.x) < 1.1 && Math.abs(_m.y) < 1.1;
+  return {
+    where: th.where, time: th.time, on,
+    x: (_m.x + 1) / 2 * window.innerWidth, y: (1 - _m.y) / 2 * window.innerHeight,
+  };
+}
+
 // ---------- loop ----------
 const STEP = 1 / SIM.hz;
 const pos = new THREE.Vector3();
@@ -277,6 +396,18 @@ function frame(now) {
   wind.at(0, flight.t, surfaceWind);
   updateBalloon(balloonModel, { burn: b.burning, vapour: b.vapour, deflate: b.deflate, heading: surfaceWind.dir + Math.PI, t: now / 1000 });
   props.update(flight, pos, surfaceWind, now / 1000);
+  view.animate(game.mode === 'paused' ? 0 : dt, surfaceWind);
+  ambient(dt);
+  // the other balloons (they drift on in the menu too)
+  if (game.mode === 'menu') {
+    game.menuT += dt;
+    flight.fleet.update(dt, game.menuT, b, null);
+  }
+  flight.fleet.list.forEach((a, i) => {
+    const m = fleetModels[i];
+    m.position.set(a.b.x, a.b.y, a.b.z);
+    updateBalloon(m, { burn: a.b.burning, vapour: false, deflate: a.b.deflate, heading: surfaceWind.dir + Math.PI, t: now / 1000 + i });
+  });
   updateCamera(pos, game.mode === 'paused' ? 0 : dt);
   view.update(pos.x, pos.z);
   sound.update({
@@ -285,7 +416,7 @@ function frame(now) {
   });
 
   renderer.render(scene, camera);
-  hud.draw(dt, { playing: game.mode === 'playing', flight, debug, fps: game.fps, seed: game.seed });
+  hud.draw(dt, { playing: game.mode === 'playing', flight, debug, fps: game.fps, seed: game.seed, threat: threatMarker() });
 
   // adaptive resolution: lower the pixel ratio on a weak GPU
   frameAcc += rawDt;
@@ -311,6 +442,8 @@ $('again-btn').addEventListener('click', () => startFlight(fixedSeed()));
 $('restart-btn').addEventListener('click', () => startFlight(fixedSeed()));
 $('resume-btn').addEventListener('click', () => setMode('playing'));
 for (const id of ['menu-btn', 'pause-menu-btn']) $(id).addEventListener('click', () => setMode('menu'));
+for (const id of ['settings-btn', 'pause-settings-btn']) $(id).addEventListener('click', openSettings);
+$('settings-done-btn').addEventListener('click', () => setMode(settingsFrom));
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && game.mode === 'playing') setMode('paused');
 });
@@ -332,6 +465,7 @@ if (debug) {
   };
 }
 
+applySettings();
 // the menu shows a balloon waiting on a launch field
 newWorld(fixedSeed());
 resize();

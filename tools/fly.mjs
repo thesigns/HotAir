@@ -2,7 +2,7 @@
 // Run: node tools/fly.mjs [flights] [height]
 import { Flight } from '../js/core/flight.js';
 import { Wind } from '../js/core/wind.js';
-import { Polder } from '../js/world/polder.js';
+import { Polder, coastFor } from '../js/world/polder.js';
 import { PROPANE, SIM } from '../js/config.js';
 
 const dt = 1 / SIM.hz;
@@ -20,7 +20,9 @@ function pilot(b, vWant, st) {
 const tally = {};
 let sumDist = 0, sumScore = 0, sumTime = 0;
 for (let seed = 1; seed <= N; seed++) {
-  const flight = new Flight(new Polder(seed), new Wind(seed), PROPANE.cylinder * PROPANE.presets.standard.cylinders);
+  const wind = new Wind(seed), w = wind.at(150, 0, {});
+  const polder = new Polder(seed, { coast: coastFor(seed, w.dir + Math.PI) });
+  const flight = new Flight(polder, wind, PROPANE.cylinder * PROPANE.presets.standard.cylinders);
   const b = flight.balloon;
   const st = { burning: false };
   let landing = false;

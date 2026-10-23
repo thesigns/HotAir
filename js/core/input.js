@@ -18,6 +18,10 @@ export class Input {
     this.pinch = 0;
     this.lastTap = { t: 0, x: 0, y: 0 };
     this.buzzAt = 0;
+    this.haptics = true;
+    this.toggleBurn = false;    // settings: tap to start and tap to stop the burner
+    this.latched = false;       // the burner, switched on in that mode
+    this.burnBtn = document.getElementById('burn-btn');
 
     this.hold(document.getElementById('burn-btn'), 'burnTouch');
     this.hold(document.getElementById('vent-btn'), 'ventTouch');
@@ -28,11 +32,20 @@ export class Input {
     window.addEventListener('blur', () => this.release());
   }
 
-  get burn() { return this.enabled && (this.burnKey || this.burnTouch !== null); }
+  get burn() { return this.enabled && (this.latched || this.burnKey || this.burnTouch !== null); }
+
+  buzz(ms) { if (this.haptics) buzz(ms); }
+
+  latch(on) {
+    this.latched = on;
+    this.burnBtn.classList.toggle('latched', on);
+    this.buzz(on ? 18 : 8);
+  }
   get vent() { return this.enabled && (this.ventKey || this.ventTouch !== null); }
 
   release() {
     this.burnKey = this.ventKey = false;
+    if (this.latched) this.latch(false);
     this.burnTouch = this.ventTouch = null;
     this.pointers.clear();
     for (const id of ['burn-btn', 'vent-btn']) document.getElementById(id).classList.remove('pressed');
@@ -44,10 +57,11 @@ export class Input {
       e.preventDefault();
       e.stopPropagation();
       if (!this.enabled || this[slot] !== null) return;
+      if (slot === 'burnTouch' && this.toggleBurn) { this.latch(!this.latched); return; }
       try { el.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
       this[slot] = e.pointerId;
       el.classList.add('pressed');
-      buzz(18);
+      this.buzz(18);
     });
     const up = (e) => {
       if (this[slot] !== e.pointerId) return;
@@ -61,7 +75,7 @@ export class Input {
   // Haptic pulses while the burner roars.
   tick(burning) {
     const now = performance.now();
-    if (burning && now > this.buzzAt) { buzz(14); this.buzzAt = now + 380; }
+    if (burning && now > this.buzzAt) { this.buzz(14); this.buzzAt = now + 380; }
   }
 
   bindCamera(canvas) {
@@ -117,7 +131,10 @@ export class Input {
   bindKeyboard() {
     const set = (e, down) => {
       switch (e.code) {
-        case 'KeyW': case 'ArrowUp': case 'Space': this.burnKey = down; break;
+        case 'KeyW': case 'ArrowUp': case 'Space':
+          if (!this.toggleBurn) this.burnKey = down;
+          else if (down && this.enabled) this.latch(!this.latched);
+          break;
         case 'KeyS': case 'ArrowDown': this.ventKey = down; break;
         default: return false;
       }
@@ -127,7 +144,7 @@ export class Input {
       if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
       if (e.code === 'KeyP' || e.code === 'Escape') { if (!e.repeat) this.onPause?.(); return; }
       if (e.repeat) return;
-      if (set(e, true) && e.code !== 'KeyS' && e.code !== 'ArrowDown' && this.enabled) buzz(18);
+      if (set(e, true) && this.burnKey && this.enabled) this.buzz(18);
     });
     window.addEventListener('keyup', (e) => set(e, false));
   }

@@ -2,12 +2,15 @@ import { clamp } from '../core/utils.js';
 
 // Sound synthesized with Web Audio – no audio files (GDD §11). The burner's roar is the signature sound;
 // otherwise a balloon is silent (it moves with the air), and what the player hears is the ground below,
-// fading with height: birdsong in the morning.
+// fading with height: birdsong in the morning, cows, a dog at a farm, church bells, the surf.
 export class Sound {
   constructor() {
     this.ctx = null;
+    this.enabled = true;      // settings: sound on / off
     this.burnWas = false;
     this.nextBird = 0;
+    this.nextBell = 0;
+    this.bells = 0;           // strikes left in the present peal
   }
 
   // Must be called from a user-gesture handler (autoplay policy).
@@ -17,7 +20,7 @@ export class Sound {
     if (!AC) return;
     const ctx = this.ctx = new AC();
     this.master = ctx.createGain();
-    this.master.gain.value = 0.7;
+    this.master.gain.value = this.enabled ? 0.7 : 0;
     this.master.connect(ctx.createDynamicsCompressor()).connect(ctx.destination);
 
     const len = ctx.sampleRate * 2;
@@ -62,12 +65,75 @@ export class Sound {
     // the basket scraping over the ground
     this.scrape = gain();
     noise().connect(filter('lowpass', 420, 0.8)).connect(this.scrape).connect(this.master);
+
+    // the surf on the beach, swelling slowly
+    this.surf = gain();
+    const swell = gain(1);
+    lfo(0.11, 0.45, swell.gain);
+    noise().connect(filter('lowpass', 520, 0.6)).connect(swell).connect(this.surf).connect(this.master);
+  }
+
+  // The ground below (every half second): distances to the nearest cow, farm, church and the sea [m].
+  ambient({ agl, cow, farm, church, sea }) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const low = clamp(1 - agl / 260, 0, 1);
+    this.surf.gain.setTargetAtTime(0.11 * clamp(1 - sea / 800, 0, 1) * (0.35 + 0.65 * low), t, 0.8);
+    if (cow < 450 && Math.random() < 0.07) this.moo(0.16 * (1 - cow / 450) * low);
+    if (farm < 260 && Math.random() < 0.04) this.bark(0.12 * (1 - farm / 260) * low);
+    if (church < 1000) {
+      const v = 0.12 * (1 - church / 1000) * (0.4 + 0.6 * low);
+      if (this.bells > 0) {
+        this.tone(523, v, 2.6, 0, [[1, 1], [2.4, 0.5], [3.9, 0.25], [5.4, 0.1]]);
+        this.tone(392, v * 0.8, 2.6, 0.25, [[1, 1], [2.4, 0.5], [3.9, 0.25]]);
+        this.bells--;
+      } else if (t > this.nextBell) {
+        this.bells = 4 + Math.floor(Math.random() * 4);
+        this.nextBell = t + 30 + Math.random() * 25;
+      }
+    }
+  }
+
+  // A cow: a low sawtooth through a formant, sliding down.
+  moo(volume) {
+    if (volume < 0.005) return;
+    const ctx = this.ctx, t = ctx.currentTime, d = 1 + Math.random() * 0.6, f = 120 + Math.random() * 40;
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(f, t);
+    o.frequency.linearRampToValueAtTime(f * 1.12, t + d * 0.3);
+    o.frequency.linearRampToValueAtTime(f * 0.82, t + d);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 520;
+    bp.Q.value = 1.6;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(volume, t + 0.2);
+    g.gain.setValueAtTime(volume, t + d * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(bp).connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + d + 0.05);
+  }
+
+  // A dog at a farm: two or three short barks.
+  bark(volume) {
+    if (volume < 0.005) return;
+    const n = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < n; i++) {
+      setTimeout(() => {
+        this.burst(volume, 900 + Math.random() * 300, 0.09, 3);
+        this.thump(volume * 0.6, 420, 260, 0.08);
+      }, i * (160 + Math.random() * 80));
+    }
   }
 
   // st: { burn, vapour, vent, agl, drag (m/s on the ground), camDist, playing }
   update(st) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
+    this.master.gain.setTargetAtTime(this.enabled ? 0.7 : 0, t, 0.05);
     // closer to the camera, louder
     const near = clamp(1.15 - Math.log10(st.camDist / 8) * 0.38, 0.35, 1.1);
     const burn = st.burn ? 1 : st.vapour ? 0.3 + Math.random() * 0.25 : 0;

@@ -1,4 +1,4 @@
-import { BALLOON, GROUND, LADDER, LANDING, PIBAL, PROPANE, TREES } from '../config.js';
+import { BALLOON, GROUND, LADDER, LANDING, PIBAL, POWER, PROPANE, TREES } from '../config.js';
 import { Balloon } from './balloon.js';
 import { dampAngle } from './utils.js';
 
@@ -8,6 +8,31 @@ import { dampAngle } from './utils.js';
 // Events go to onEvent(type, data): liftoff, touchdown, hop, reserve, empty, done, crash.
 const W = {};
 const _near = { trees: [], houses: [] };
+const _wires = [];
+
+// The balloon's radius at a height above the basket floor: the basket, the ropes, the envelope.
+function radiusAt(h) {
+  if (h < 0) return -1;
+  if (h < BALLOON.basket + 0.1) return BALLOON.basket * 0.6;
+  const e = h - BALLOON.mouth;
+  if (e < 0) return 1.2;
+  const pr = BALLOON.profile;
+  for (let i = 1; i < pr.length; i++) {
+    if (e <= pr[i][1]) return pr[i - 1][0] + (pr[i][0] - pr[i - 1][0]) * (e - pr[i - 1][1]) / (pr[i][1] - pr[i - 1][1]);
+  }
+  return -1;
+}
+
+// Does a balloon with its basket at (x, y, z) touch a power line's wires?
+export function touchesWires(terrain, x, y, z) {
+  for (const w of terrain.wires(x, z, _wires)) {
+    const r = radiusAt(w.h - y);
+    if (r < 0) continue;
+    const d = Math.min(Math.abs(w.cross), Math.abs(w.cross - POWER.spread), Math.abs(w.cross + POWER.spread));
+    if (d < r) return true;
+  }
+  return false;
+}
 
 export function rate(sink, { forest = false, tipped = false } = {}) {
   if (sink > LANDING.crash) return 'CRASH';
@@ -20,6 +45,9 @@ export class Flight {
     this.terrain = terrain;
     this.wind = wind;
     this.onEvent = onEvent;
+    this.fleet = null;           // the other balloons (js/core/fleet.js), when there are any
+    this.threat = null;          // one of them on a collision course
+    this.learnFleet = (agl, w) => this.learnWind(agl, w);
     this.balloon = new Balloon();
     this.propane = propane;
     this.reset();
@@ -39,6 +67,8 @@ export class Flight {
     this.reserveSaid = false;
     this.emptySaid = false;
     this.inTrees = false;
+    this.powerAhead = null;      // seconds until the present track and sink rate lead into a power line
+    this.wireCheck = 0;
     this.ladder = Array.from({ length: Math.ceil(LADDER.top / LADDER.bin) + 1 }, () => null);
     this.ref = null;             // the "away from the launch" direction for the wind ladder (heading, rad)
     // the pilot balloon, released a few meters off the basket
@@ -65,6 +95,11 @@ export class Flight {
     if (this.phase === 'ground' && vent) b.deflate = Math.min(1, b.deflate + dt / GROUND.deflate);
     b.step(dt, burn, vent, W.x, W.z, ground, this.phase === 'launch');
     this.learn(agl, W);
+    if (this.fleet) {
+      this.fleet.update(dt, this.t, b, this.learnFleet);
+      this.threat = this.phase === 'air' ? this.fleet.threat(b) : null;
+      if (this.phase !== 'launch' && this.fleet.hit(b)) { this.crash('balloon'); return; }
+    }
     this.updatePibal(dt);
     this.updateRef(dt);
 
@@ -80,8 +115,14 @@ export class Flight {
     // houses: the basket against the walls and the roof
     terrain.near(b.x, b.z, BALLOON.basket, _near);
     for (const h of _near.houses) {
-      if (b.y < roofAt(h, b.x, b.z)) { this.crash('house'); return; }
+      if (b.y < roofAt(h, b.x, b.z)) { this.crash(h.kind === 'pylon' ? 'power' : h.kind === 'glass' ? 'glass' : 'house'); return; }
     }
+    // power lines: the wires against the whole balloon; a warning when the track leads into them
+    if (terrain.wires && this.phase === 'air') {
+      if (touchesWires(terrain, b.x, b.y, b.z)) { this.crash('power'); return; }
+      this.wireCheck -= dt;
+      if (this.wireCheck <= 0) { this.wireCheck = 0.25; this.powerAhead = this.predictWires(); }
+    } else this.powerAhead = null;
     // trees: scraping through a crown; sinking deep into it is a landing in the trees
     this.inTrees = false;
     for (const tr of _near.trees) {
@@ -157,9 +198,25 @@ export class Flight {
     this.onEvent('crash', this.result);
   }
 
+  // Straight on with the present velocity: when would the balloon touch a power line? (GDD §7)
+  predictWires() {
+    const b = this.balloon;
+    for (let t = 0.5; t <= POWER.warn; t += 0.5) {
+      const x = b.x + b.vx * t, z = b.z + b.vz * t;
+      const y = Math.max(this.terrain.height(x, z), b.y + b.vy * t);
+      if (touchesWires(this.terrain, x, y, z)) return t;
+    }
+    return null;
+  }
+
   // The wind ladder (GDD §9) learns the wind at every height the balloon or the pibal passes.
   learn(agl, w) {
-    if (this.phase === 'launch' || agl < 0 || agl > LADDER.top) return;
+    if (this.phase === 'launch') return;
+    this.learnWind(agl, w);
+  }
+
+  learnWind(agl, w) {
+    if (agl < 0 || agl > LADDER.top) return;
     this.ladder[Math.round(agl / LADDER.bin)] = { dir: w.dir, speed: w.speed, t: this.t };
   }
 

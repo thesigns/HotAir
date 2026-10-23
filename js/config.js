@@ -38,6 +38,8 @@ export const BALLOON = {
   height: 18,           // envelope height [m]
   radius: 7.8,          // envelope radius at its widest [m]
   centre: 12.5,         // envelope centre above the basket floor (camera target) [m]
+  // the envelope's profile from the mouth to the crown: [radius, height above the mouth] (model, collisions)
+  profile: [[1.5, 0], [3.0, 1.5], [5.4, 4.0], [7.1, 7.0], [7.8, 10.0], [7.6, 12.6], [6.6, 15.1], [4.6, 17.0], [2.2, 18.0], [0.01, 18.3]],
 };
 
 // Propane (GDD §5.2): counted in seconds of burning. The last part of the bar is the reserve.
@@ -88,6 +90,31 @@ export const WIND = {
   driftPeriod: [140, 260],             // seconds
 };
 
+// The other balloons (GDD §6.3).
+export const FLEET = {
+  ground: 4,            // launching from fields around the player's …
+  air: 8,               // … and already in the air
+  groundRange: [70, 260],
+  airRange: [250, 1300],
+  heights: [40, 420],   // the heights their pilots pick [m]
+  launchAt: [4, 90],    // [s]
+  hold: [40, 110],      // how long they keep a height [s]
+  flightTime: [280, 560],
+  keepClear: 45,        // the courtesy rules work within this horizontal distance [m]
+  reveals: 900,         // a balloon this close shows the wind at its height on the ladder [m]
+  touch: 0.92,          // ellipsoid gap below which two balloons touch (a little forgiving)
+  warn: 15,             // the HUD warns of a collision course this many seconds ahead
+  warnGap: 1.25,
+  // a balloon that has drifted this far away comes back as a new one, on a course that crosses the player's
+  // path at another height in `cross` seconds – there is always traffic around
+  recycle: 1500,
+  spawn: 1100,          // … but never closer than this (in the haze) [m]
+  cross: [70, 170],
+  crossOffset: 45,      // how far beside the player's position it passes [m]
+  nearby: 0.6,          // chance that it flies a little above or below the player …
+  nearbyGap: [35, 110], // … by this much [m]
+};
+
 // The pilot balloon at the launch (GDD §6.1).
 export const PIBAL = {
   climb: 3.5,           // [m/s]
@@ -112,11 +139,37 @@ export const POLDER = {
   viewRadius: 1900,     // chunks whose centre is closer than this are built [m]
   strip: [26, 48],      // field strip widths [m]
   ditch: 1.0,           // ditch half-width between strips [m]
-  edge: { ditch: 1.6, road: 3, canal: 5 },   // half-widths of the block borders
+  edge: { ditch: 1.6, road: 3, canal: 5, sea: 0 },   // half-widths of the block borders
   edgeOdds: { road: 0.4, canal: 0.15 },      // per border line; the rest are wide ditches
   forest: 0.06,         // chance that a block is a wood
   farm: 0.38,           // chance of a farm in a block
   treeRow: 0.6,         // chance of a row of trees along a road, per block side
+  mill: 0.07,           // chance of a windmill in a block of fields
+  cows: 0.35,           // chance of a herd in a pasture
+  village: 0.4,         // chance of a village in a 5 × 5 cell of blocks
+  glass: 0.22,          // chance of a cluster of greenhouses in a 4 × 4 cell
+};
+
+// The North Sea coast (GDD §8.1): a belt of dunes, the beach, the sea – usually somewhere downwind.
+export const COAST = {
+  inland: 0.15,         // chance of a world without the coast
+  downwind: 0.6,        // chance that it lies the way the wind blows at the start …
+  downwindBlocks: [5, 12],   // … this many blocks away (1.2–2.9 km)
+  upwindBlocks: [3, 6],      // otherwise behind the launch
+  dunes: 170,           // the dune belt [m]
+  duneHeight: 9,        // [m]
+  beach: 60,            // the beach, flat sand to land on [m]
+};
+
+// High-voltage lines along some roads (GDD §7): pylons, three wires on a cross-arm. Touching them is a crash.
+export const POWER = {
+  odds: 0.22,           // chance that a road has a power line beside it
+  offset: 12,           // the pylons stand this far from the road's edge [m]
+  spacing: 260,         // between pylons [m]
+  top: 24,              // the wires hang from here … [m]
+  sag: 5,               // … and sag this much mid-span [m]
+  spread: 5,            // the outer wires this far either side of the middle one [m]
+  warn: 30,             // the HUD warns when the track and sink rate lead into the wires within this [s]
 };
 
 export const VIEW = {

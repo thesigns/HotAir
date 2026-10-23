@@ -307,7 +307,7 @@ Two fonts: a round, playful one with character for the big words, and the system
 ### 13.3 Simulation
 
 - A fixed-step simulation (60 Hz): heat → lift → vertical motion, the wind → horizontal motion, ground contact. Gameplay logic does not import Three.js, so it can be tested in Node with scripted pilots (bots) measuring the target-feel table (§5.1) and the flight length per propane preset (§5.3).
-- The AI balloons use the same simulation with simple pilot logic (pick a height, hold it, change it now and then, land).
+- The AI balloons use the same simulation with simple pilot logic (pick a height, hold it, change it now and then, land). Near the player they follow the right-of-way rule: the upper balloon doesn't sink onto a lower one, and the lower one doesn't climb into it either – so a collision is always the player crossing another balloon's height. A balloon that has drifted far away comes back in the haze on a course that crosses the player's path at a nearby height, so there is always traffic around.
 - The landing check: slope under the basket and obstacles within a few metres.
 - A `?debug` URL flag exposes state for measuring and tuning, and a `?seed=` flag for repeating a flight.
 
@@ -336,7 +336,7 @@ Two fonts: a round, playful one with character for the big words, and the system
 
 ### M1 – The Netherlands complete
 
-- Dikes, canals, windmills, villages, greenhouses, the coast and the beach.
+- Canals, windmills, villages, greenhouses, the coast with dunes and the beach (dikes: later). The coast is placed from the seed and the start wind: usually downwind, sometimes behind the launch, sometimes not at all.
 - Other balloons with AI pilots and the collision warning; power lines.
 - The three propane presets, records, the menu, settings.
 - The soundscape, the chase crew radio.

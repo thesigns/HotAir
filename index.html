@@ -39,16 +39,14 @@
         <span class="choice-label">Country</span>
         <b>The Netherlands</b>
       </div>
-      <div class="choice">
-        <span class="choice-label">Propane</span>
-        <b id="menu-preset">Standard · 2 cylinders</b>
-      </div>
-      <p id="menu-best" class="best"></p>
+      <p class="choice-label presets-label">Propane</p>
+      <div id="presets" class="presets"></div>
       <button id="fly-btn" class="btn">NEW FLIGHT</button>
+      <button id="settings-btn" class="btn btn-alt btn-small">SETTINGS</button>
       <div class="help">
         <p>Fly as far from the launch field as the propane allows, then land softly on dry, flat ground.</p>
         <p>You only go up and down – <b>every height has its own wind</b>. The red pilot balloon shows the winds; the ladder on the right remembers them (green arrows take you further).</p>
-        <p>Burn early and wait: the balloon answers late. Score = metres × landing (exceptional ×1.5, good ×1, rough ×0.5). Ditches, houses and a hard touchdown are a crash.</p>
+        <p>Burn early and wait: the balloon answers late. Score = metres × landing (exceptional ×1.5, good ×1, rough ×0.5). Water, buildings, power lines, other balloons and a hard touchdown are a crash.</p>
         <p class="touch-only"><b>Right thumb</b> – BURN (hold) · <b>left thumb</b> – VENT (hold; on the ground it deflates the balloon) · drag to look around, pinch to zoom, double-tap to reset the view.</p>
         <p class="desk">W / ↑ / Space – burn · S / ↓ – vent · mouse: drag, wheel, double-click · P – pause</p>
       </div>
@@ -60,7 +58,21 @@
       <h2>Paused</h2>
       <button id="resume-btn" class="btn">RESUME</button>
       <button id="restart-btn" class="btn btn-alt">NEW FLIGHT</button>
+      <button id="pause-settings-btn" class="btn btn-alt">SETTINGS</button>
       <button id="pause-menu-btn" class="btn btn-alt">MENU</button>
+    </div>
+  </section>
+
+  <section id="settings" class="screen hidden">
+    <div class="card">
+      <h2>Settings</h2>
+      <div class="toggles">
+        <button class="toggle" data-key="sound"><span>Sound</span><b></b></button>
+        <button class="toggle" data-key="haptics"><span>Vibration</span><b></b></button>
+        <button class="toggle" data-key="toggleBurn"><span>Burner: tap on, tap off</span><b></b></button>
+        <button class="toggle" data-key="leftHanded"><span>Left-handed (BURN on the left)</span><b></b></button>
+      </div>
+      <button id="settings-done-btn" class="btn">DONE</button>
     </div>
   </section>
 
