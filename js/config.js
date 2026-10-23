@@ -99,7 +99,7 @@ export const COUNTRIES = {
     wind: { prevailing: [195, 295] },
   },
   italy: {
-    name: 'Italy', region: 'Tuscany', level: 'Medium', terrain: 'tuscany',
+    name: 'Italy', level: 'Medium', terrain: 'tuscany',
     fog: 0xe6dac2, sky: 0x86acd2, far: 0x9ea45c, farY: -5,
     // light, bent by the hills
     wind: { speed: [[2, 6], [6, 12], [9, 17], [12, 22]], veer: [[20, 60], [15, 55], [10, 45]] },

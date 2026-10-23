@@ -214,11 +214,9 @@ function renderMenu() {
     btn.className = `preset${key === progress.country ? ' on' : ''}`;
     const name = document.createElement('b');
     name.textContent = c.name.replace('The ', '');
-    const sub = document.createElement('small');
-    sub.textContent = c.region ?? ' ';
     const level = document.createElement('small');
     level.textContent = c.level;
-    btn.append(name, sub, level);
+    btn.append(name, level);
     btn.addEventListener('click', () => {
       if (progress.country === key) return;
       progress.country = key;
