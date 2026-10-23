@@ -1,0 +1,49 @@
+# Hot Air
+
+Fly a hot-air balloon as far as the propane allows – and land softly.
+Low-poly 3D, a mobile-first browser game. Design: [docs/HotAir-GDD.md](docs/HotAir-GDD.md).
+
+Status: **M0 prototype** – the Netherlands (a procedural polder with ditches, canals, roads, farms and
+trees), the flight model with burner lag, winds that change with height and time, the pilot balloon,
+the wind ladder, propane with a reserve, landing ratings, a record, the burner sound.
+
+## Running locally
+
+ES modules need an HTTP server (it won't work from `file://`):
+
+```
+python -m http.server 8766
+```
+
+then open `http://localhost:8766/`. Add `?debug` for a state readout, `?seed=123` to fly the same world again.
+
+On a phone in the same network, open `http://<computer-IP>:8766/`.
+
+## Controls
+
+| Touch | Keyboard / mouse | |
+|---|---|---|
+| BURN (right thumb), held | W / ↑ / Space | the burner – heat, lift |
+| VENT (left thumb), held | S / ↓ | spill hot air – sink; on the ground: deflate |
+| drag | mouse drag | look around the balloon |
+| pinch | wheel | zoom |
+| double-tap | double-click | reset the view |
+| II | P / Esc | pause |
+
+The balloon answers late: burn, then wait. You only go up and down – every height has its own wind.
+The red pilot balloon at the launch draws the winds in the sky; the ladder on the right remembers them,
+drawn so that an arrow pointing up takes you further from the launch (green). Flying high is faster,
+but the thin air costs more propane.
+
+When the propane bar reaches the reserve, look for a field. Land on dry, flat ground: a touchdown at
+up to 0.3 m/s is EXCEPTIONAL (×1.5), up to 1 m/s GOOD (×1), harder or in the trees ROUGH (×0.5);
+water, a house or more than 3 m/s is a CRASH. Hold VENT right after the touchdown, before the basket
+is dragged into a ditch. With the propane gone, holding BURN still gives the last vapour – enough to
+come down ROUGH instead of crashing.
+
+## Tuning checks
+
+```
+node tools/feel.mjs        # the flight model against the GDD §5.1 table
+node tools/fly.mjs 60 150  # 60 whole flights with a scripted pilot at ~150 m
+```

@@ -1,0 +1,21 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# Blender autosaves and backups (keep the .blend sources, ignore the copies)
+*.blend1
+*.blend2
+*.blend@
+*.blend~
+
+# Local tooling
+.claude/settings.local.json
+node_modules/
+*.log

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#24313d">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="description" content="Hot Air – fly a hot-air balloon as far as the propane allows and land softly. A browser game.">
+  <title>Hot Air</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Grandstander:wght@700;900&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <canvas id="hud"></canvas>
+  <div id="fade"></div>
+
+  <div id="controls" class="hidden">
+    <button id="vent-btn" class="ctl">VENT</button>
+    <button id="burn-btn" class="ctl">BURN</button>
+    <button id="pause-btn" aria-label="Pause">II</button>
+  </div>
+
+  <section id="menu" class="screen">
+    <div class="card">
+      <h1>Hot Air</h1>
+      <p class="sub">How far can you fly?</p>
+      <div class="choice">
+        <span class="choice-label">Country</span>
+        <b>The Netherlands</b>
+      </div>
+      <div class="choice">
+        <span class="choice-label">Propane</span>
+        <b id="menu-preset">Standard · 2 cylinders</b>
+      </div>
+      <p id="menu-best" class="best"></p>
+      <button id="fly-btn" class="btn">NEW FLIGHT</button>
+      <div class="help">
+        <p>Fly as far from the launch field as the propane allows, then land softly on dry, flat ground.</p>
+        <p>You only go up and down – <b>every height has its own wind</b>. The red pilot balloon shows the winds; the ladder on the right remembers them (green arrows take you further).</p>
+        <p>Burn early and wait: the balloon answers late. Score = metres × landing (exceptional ×1.5, good ×1, rough ×0.5). Ditches, houses and a hard touchdown are a crash.</p>
+        <p class="touch-only"><b>Right thumb</b> – BURN (hold) · <b>left thumb</b> – VENT (hold; on the ground it deflates the balloon) · drag to look around, pinch to zoom, double-tap to reset the view.</p>
+        <p class="desk">W / ↑ / Space – burn · S / ↓ – vent · mouse: drag, wheel, double-click · P – pause</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="pause" class="screen hidden">
+    <div class="card">
+      <h2>Paused</h2>
+      <button id="resume-btn" class="btn">RESUME</button>
+      <button id="restart-btn" class="btn btn-alt">NEW FLIGHT</button>
+      <button id="pause-menu-btn" class="btn btn-alt">MENU</button>
+    </div>
+  </section>
+
+  <section id="results" class="screen hidden">
+    <div class="card">
+      <h2 id="res-title">Good landing</h2>
+      <p id="res-msg" class="meta"></p>
+      <dl class="tally">
+        <dt>Distance</dt><dd id="res-dist">0 m</dd>
+        <dt>Landing</dt><dd id="res-landing">–</dd>
+      </dl>
+      <p class="score">Score <b id="res-score">0</b></p>
+      <p id="res-badge" class="badge"></p>
+      <p id="res-best" class="meta"></p>
+      <button id="again-btn" class="btn">NEW FLIGHT</button>
+      <button id="menu-btn" class="btn btn-alt">MENU</button>
+    </div>
+  </section>
+
+  <div id="loading">Loading…</div>
+  <div id="rotate">
+    <div class="card">
+      <h2>Turn your phone</h2>
+      <p class="sub">Hot Air is played upright.</p>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

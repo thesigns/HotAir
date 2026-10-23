@@ -1,0 +1,33 @@
+# Normalize text files to LF in the repo and in working copies (also on Windows)
+* text=auto eol=lf
+
+# Source and web files
+*.html text diff=html
+*.css  text diff=css
+*.js   text
+*.mjs  text
+*.json text
+*.md   text diff=markdown
+*.gltf text
+
+# Images
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+
+# 3D assets
+# Do not move .glb/.bin to Git LFS: GitHub Pages serves LFS pointer files, not the content.
+*.glb   binary
+*.bin   binary
+*.blend binary
+*.fbx   binary
+
+# Audio and fonts
+*.mp3   binary
+*.ogg   binary
+*.wav   binary
+*.woff  binary
+*.woff2 binary
