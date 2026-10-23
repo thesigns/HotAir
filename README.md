@@ -3,6 +3,8 @@
 Fly a hot-air balloon as far as the propane allows – and land softly.
 Low-poly 3D, a mobile-first browser game. Design: [docs/HotAir-GDD.md](docs/HotAir-GDD.md).
 
+**Play: https://thesigns.github.io/HotAir/**
+
 Status: **M0 prototype** – the Netherlands (a procedural polder with ditches, canals, roads, farms and
 trees), the flight model with burner lag, winds that change with height and time, the pilot balloon,
 the wind ladder, propane with a reserve, landing ratings, a record, the burner sound.
