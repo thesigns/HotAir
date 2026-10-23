@@ -169,8 +169,9 @@ function setMode(mode) {
   $('pause').classList.toggle('hidden', mode !== 'paused');
   $('results').classList.toggle('hidden', mode !== 'results');
   $('settings').classList.toggle('hidden', mode !== 'settings');
+  $('help').classList.toggle('hidden', mode !== 'help');
   $('controls').classList.toggle('hidden', mode !== 'playing');
-  if (mode === 'paused' || mode === 'menu' || mode === 'settings') sound.suspend();
+  if (mode !== 'playing' && mode !== 'results') sound.suspend();
   if (mode === 'settings') renderSettings();
   if (mode === 'playing') sound.resume();
   if (mode === 'menu') renderMenu();
@@ -209,11 +210,12 @@ function renderMenu() {
   }
 }
 
-// Settings (GDD §4.3): only things that don't change the score.
-let settingsFrom = 'menu';
-function openSettings() {
-  settingsFrom = game.mode;
-  setMode('settings');
+// Settings (GDD §4.3, only things that don't change the score) and help: opened from the menu or the pause,
+// and back there.
+let overlayFrom = 'menu';
+function openOverlay(mode) {
+  overlayFrom = game.mode;
+  setMode(mode);
 }
 
 function renderSettings() {
@@ -442,8 +444,9 @@ $('again-btn').addEventListener('click', () => startFlight(fixedSeed()));
 $('restart-btn').addEventListener('click', () => startFlight(fixedSeed()));
 $('resume-btn').addEventListener('click', () => setMode('playing'));
 for (const id of ['menu-btn', 'pause-menu-btn']) $(id).addEventListener('click', () => setMode('menu'));
-for (const id of ['settings-btn', 'pause-settings-btn']) $(id).addEventListener('click', openSettings);
-$('settings-done-btn').addEventListener('click', () => setMode(settingsFrom));
+for (const id of ['settings-btn', 'pause-settings-btn']) $(id).addEventListener('click', () => openOverlay('settings'));
+for (const id of ['help-btn', 'pause-help-btn']) $(id).addEventListener('click', () => openOverlay('help'));
+for (const id of ['settings-done-btn', 'help-done-btn']) $(id).addEventListener('click', () => setMode(overlayFrom));
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && game.mode === 'playing') setMode('paused');
 });
