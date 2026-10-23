@@ -2,7 +2,8 @@
 // the rating it came from, the last preset chosen and the settings, in localStorage. Storage can be unavailable
 // (private mode, blocked site data): everything still works, nothing is kept.
 
-const KEY = 'hotair.progress.v1';
+const KEY = 'hotair.progress.v2';   // v2: bigger cylinders, the long flight has four – the old records don't compare
+const OLD = 'hotair.progress.v1';
 
 export const DEFAULT_SETTINGS = {
   sound: true,
@@ -15,6 +16,11 @@ export function loadProgress() {
   let p = null;
   try {
     p = JSON.parse(localStorage.getItem(KEY));
+    // from v1 keep the settings and the choices, not the records
+    if (!p) {
+      const old = JSON.parse(localStorage.getItem(OLD));
+      if (old) p = { records: {}, settings: old.settings, preset: old.preset, country: old.country };
+    }
   } catch { /* storage unavailable or corrupt */ }
   if (!p || typeof p.records !== 'object') p = { records: {} };
   p.settings = { ...DEFAULT_SETTINGS, ...p.settings };

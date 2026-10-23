@@ -11,7 +11,7 @@
 | Genre | Calm flying / light simulation, distance score |
 | Platform | Web browser, phones first (Android Chrome, iOS Safari), desktop as a bonus |
 | Orientation | Portrait on phones; landscape only on a computer |
-| Session | A flight takes 2–8 minutes, depending on the propane chosen |
+| Session | A flight takes 3–13 minutes, depending on the propane chosen |
 | Visual style | Low-poly, flat-shaded 3D, third-person camera orbiting the balloon |
 | World | Procedural terrain, a different look and challenge in every country |
 | Tech | Vanilla JS + Three.js, no build step, hosted on GitHub Pages |
@@ -126,9 +126,9 @@ Chosen in the menu before NEW FLIGHT. Each preset has its own records.
 
 | Preset | Cylinders | Flight length (target) |
 |---|---|---|
-| Short | 1 | ~2–3 min |
-| Standard | 2 | ~5 min |
-| Long | 3 | ~8 min |
+| Short | 1 | ~3 min |
+| Standard | 2 | ~6 min |
+| Long | 4 | ~12 min |
 
 ## 6. The flight
 

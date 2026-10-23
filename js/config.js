@@ -44,12 +44,12 @@ export const BALLOON = {
 
 // Propane (GDD §5.2): counted in seconds of burning. The last part of the bar is the reserve.
 export const PROPANE = {
-  cylinder: 30,         // seconds of burning per cylinder
+  cylinder: 36,         // seconds of burning per cylinder
   reserve: 0.18,        // fraction of the total
   presets: {
     short: { cylinders: 1, name: 'Short' },
     standard: { cylinders: 2, name: 'Standard' },
-    long: { cylinders: 3, name: 'Long' },
+    long: { cylinders: 4, name: 'Long' },
   },
   preset: 'standard',   // M0: only this one is offered
 };

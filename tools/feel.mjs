@@ -103,7 +103,7 @@ for (const [key, p] of Object.entries(PROPANE.presets)) {
     b.step(dt, holdPilot(b, 150, st), false, 0, 0, 0);
     t += dt;
   }
-  console.log(`Preset ${p.name.padEnd(8)} (${p.cylinders} cyl): ${f1(t / 60)} min of flight at 150 m   target ${{ short: '2–3', standard: '~5', long: '~8' }[key]} min`);
+  console.log(`Preset ${p.name.padEnd(8)} (${p.cylinders} cyl): ${f1(t / 60)} min of flight at 150 m   target ${{ short: '~3', standard: '~6', long: '~12' }[key]} min`);
 }
 
 // the propane gone at 150 m: holding BURN (the last vapour) all the way down
