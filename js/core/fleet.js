@@ -56,6 +56,7 @@ export class Fleet {
       const ground = this.terrain.height(b.x, b.z);
       const agl = b.y - ground;
       this.wind.at(Math.max(0, agl), t, W);
+      this.terrain.channel?.(b.x, b.z, b.y, W);
       let burn = false, vent = false;
       if (a.phase === 'waiting' && t >= a.launchAt) a.phase = 'air';
       if (a.phase === 'air' && t >= a.landAt) a.phase = 'landing';

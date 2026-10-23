@@ -344,6 +344,7 @@ Two fonts: a round, playful one with character for the big words, and the system
 ### M2 – Italy and Switzerland
 
 - Both countries with their generators, building sets, palettes and winds; valley channelling; cable cars.
+- Done: the country is chosen in the menu, records per country and propane preset. Tuscany: vineyards and olive groves give a ROUGH landing at best. Switzerland: the valley floors lie 100 m above "sea level" (thin air), the ridges 170–400 m above them with passes; being carried against a hillside counts as a touchdown (the ground rising under the basket adds to the sink rate).
 
 ### M3 – Polish and more countries
 

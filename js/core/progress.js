@@ -19,6 +19,7 @@ export function loadProgress() {
   if (!p || typeof p.records !== 'object') p = { records: {} };
   p.settings = { ...DEFAULT_SETTINGS, ...p.settings };
   p.preset ??= 'standard';
+  p.country ??= 'netherlands';
   return p;
 }
 

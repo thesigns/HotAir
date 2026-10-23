@@ -2,15 +2,14 @@
 // Run: node tools/traffic.mjs [flights]
 import { Flight } from '../js/core/flight.js';
 import { Fleet } from '../js/core/fleet.js';
-import { Wind } from '../js/core/wind.js';
-import { Polder } from '../js/world/polder.js';
+import { makeWorld } from '../js/world/world.js';
 import { PROPANE, SIM } from '../js/config.js';
 
 const dt = 1 / SIM.hz;
 const N = Number(process.argv[2] ?? 30);
 let crashes = 0, warned = 0, close = 0;
 for (let seed = 1; seed <= N; seed++) {
-  const p = new Polder(seed), w = new Wind(seed);
+  const { terrain: p, wind: w } = makeWorld(process.argv[3] ?? 'netherlands', seed);
   const f = new Flight(p, w, PROPANE.cylinder * 2);
   f.fleet = new Fleet(p, w, seed, f.x0, f.z0);
   const b = f.balloon, st = { burning: false };

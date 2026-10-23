@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { COAST, POLDER, POWER } from '../config.js';
 import { hash, mulberry32 } from '../core/utils.js';
 import { SEA_Y, WATER_Y } from './polder.js';
+import { Builder, ROUND, TOWER, _c, _d, drawCow, drawHouse, drawTree, shadeOf } from './kit.js';
 
 // Draws the polder (js/world/polder.js) in chunks of POLDER.chunk × POLDER.chunk blocks around the balloon:
 // one merged, vertex-coloured, flat-shaded mesh per chunk (one draw call). Built one chunk per frame,
@@ -18,7 +19,6 @@ const COLORS = {
   water: '#6f9cb2',
   bank: '#5f5a3e',
   yard: '#a39a84',
-  trunk: '#5a4632',
   pylon: '#9a9ea3',
   wire: '#2d2f33',
   marker: '#ff7a1a',
@@ -32,31 +32,9 @@ const COLORS = {
   mill: '#5c5446',
   millCap: '#3b3833',
   sail: '#efe8d6',
-  cows: [['#1d1d1d', '#f4f2ec'], ['#f4f2ec', '#1d1d1d'], ['#7a4a2a', '#f4f2ec']],
-  spire: '#2f4f4a',
-  crowns: ['#4d7a34', '#5a8a3a', '#3f6b2e', '#628f3f'],
-  pine: ['#33572d', '#3d6334'],
 };
 // field types drawn as rows (alternating shades along the strip)
 const ROWS = { grain: 3.2, crop: 2.4, maize: 2.8, ploughed: 2.2 };
-
-const _c = new THREE.Color();
-const _d = new THREE.Color();
-
-// Unit shapes for the trees, as flat triangle lists.
-function template(geo) {
-  const g = geo.index ? geo.toNonIndexed() : geo;
-  const a = Float32Array.from(g.attributes.position.array);
-  geo.dispose();
-  if (g !== geo) g.dispose();
-  return a;
-}
-const ROUND = template(new THREE.IcosahedronGeometry(1, 0));
-const CONE = template(new THREE.ConeGeometry(1, 1, 6, 1, true).translate(0, 0.5, 0));
-const TRUNK = template(new THREE.CylinderGeometry(0.18, 0.26, 1, 5, 1, true).translate(0, 0.5, 0));
-const TOWER = template(new THREE.CylinderGeometry(0.55, 1, 1, 8, 1, true).translate(0, 0.5, 0));
-const BOX = template(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0));
-const PYRAMID = template(new THREE.ConeGeometry(1, 1, 4, 1, true).rotateY(Math.PI / 4).translate(0, 0.5, 0));
 
 // A windmill's sails: four blades on a hub, turning about the local Z axis (shared by every mill).
 const SAILS = (() => {
@@ -72,51 +50,6 @@ const SAILS = (() => {
   return geo;
 })();
 const SAIL_MAT = new THREE.MeshLambertMaterial({ color: COLORS.sail, side: THREE.DoubleSide });
-
-class Builder {
-  constructor() { this.p = []; this.c = []; }
-
-  tri(ax, ay, az, bx, by, bz, cx, cy, cz, col) {
-    this.p.push(ax, ay, az, bx, by, bz, cx, cy, cz);
-    for (let i = 0; i < 3; i++) this.c.push(col.r, col.g, col.b);
-  }
-
-  // A horizontal rectangle facing up.
-  flat(x0, z0, x1, z1, y, col) {
-    if (x1 - x0 < 0.01 || z1 - z0 < 0.01) return;
-    this.tri(x0, y, z0, x0, y, z1, x1, y, z1, col);
-    this.tri(x0, y, z0, x1, y, z1, x1, y, z0, col);
-  }
-
-  // A vertical wall from (x0, z0) to (x1, z1), between y0 and y1.
-  wall(x0, z0, x1, z1, y0, y1, col) {
-    this.tri(x0, y0, z0, x1, y0, z1, x1, y1, z1, col);
-    this.tri(x0, y0, z0, x1, y1, z1, x0, y1, z0, col);
-  }
-
-  shape(tpl, x, y, z, sx, sy, sz, col, jitter = 0, rnd = null) {
-    for (let i = 0; i < tpl.length; i += 9) {
-      if (jitter) _d.copy(col).multiplyScalar(1 - jitter + rnd() * jitter * 2);
-      const cc = jitter ? _d : col;
-      this.tri(
-        x + tpl[i] * sx, y + tpl[i + 1] * sy, z + tpl[i + 2] * sz,
-        x + tpl[i + 3] * sx, y + tpl[i + 4] * sy, z + tpl[i + 5] * sz,
-        x + tpl[i + 6] * sx, y + tpl[i + 7] * sy, z + tpl[i + 8] * sz, cc,
-      );
-    }
-  }
-
-  build() {
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(this.c, 3));
-    geo.computeVertexNormals();
-    geo.computeBoundingSphere();
-    return geo;
-  }
-}
-
-const shadeOf = (list, s) => _c.set(list[Math.floor(s * list.length) % list.length]);
 
 export class PolderView {
   constructor(polder, parent) {
@@ -377,15 +310,7 @@ export class PolderView {
     this.mills.push(m);
   }
 
-  // A cow: a body, a patch and a head - black-and-white or brown.
-  cow(bld, c) {
-    const [coat, patch] = COLORS.cows[c.coat];
-    const sx = c.turn ? 2.2 : 0.8, sz = c.turn ? 0.8 : 2.2;
-    bld.shape(BOX, c.x, 0.55, c.z, sx, 0.75, sz, _c.set(coat));
-    bld.shape(BOX, c.x + (c.turn ? 0.3 : 0), 1.05, c.z + (c.turn ? 0 : 0.3), c.turn ? 0.8 : 0.7, 0.3, c.turn ? 0.7 : 0.8, _c.set(patch));
-    const hx = c.turn ? c.x + 1.25 : c.x, hz = c.turn ? c.z : c.z + 1.25;
-    bld.shape(BOX, hx, 0.85, hz, 0.45, 0.45, 0.45, _c.set(coat));
-  }
+  cow(bld, c) { drawCow(bld, c); }
 
   field(rect, s, m0, m1) {
     if (s.bands) {
@@ -401,52 +326,9 @@ export class PolderView {
     for (let i = 0; i < n; i++) rect(s.f0 + i * w, s.f0 + (i + 1) * w, m0, m1, 0, _d.copy(base).multiplyScalar(i % 2 ? 0.92 : 1.04));
   }
 
-  house(bld, h) {
-    const { x0, x1, z0, z1, wall, ridge } = h;
-    if (h.kind === 'tower') {
-      // a church tower with a spire
-      bld.shape(BOX, (x0 + x1) / 2, 0, (z0 + z1) / 2, x1 - x0, wall, z1 - z0, _c.set(h.wallColor));
-      bld.shape(PYRAMID, (x0 + x1) / 2, wall, (z0 + z1) / 2, (x1 - x0) * 0.72, h.spire - wall, (z1 - z0) * 0.72, _c.set(COLORS.spire));
-      return;
-    }
-    const col = _c.set(h.wallColor);
-    bld.wall(x0, z1, x0, z0, 0, wall, col);
-    bld.wall(x1, z0, x1, z1, 0, wall, col);
-    bld.wall(x0, z0, x1, z0, 0, wall, col);
-    bld.wall(x1, z1, x0, z1, 0, wall, col);
-    const roof = _d.set(h.roof);
-    const o = 0.5;   // eaves
-    if (h.ridgeAxis === 'z') {
-      const xm = (x0 + x1) / 2;
-      // gable ends
-      bld.tri(x0, wall, z0, x1, wall, z0, xm, ridge, z0, col);
-      bld.tri(x1, wall, z1, x0, wall, z1, xm, ridge, z1, col);
-      // roof planes
-      bld.tri(x0 - o, wall - 0.3, z0 - o, xm, ridge, z0 - o, xm, ridge, z1 + o, roof);
-      bld.tri(x0 - o, wall - 0.3, z0 - o, xm, ridge, z1 + o, x0 - o, wall - 0.3, z1 + o, roof);
-      bld.tri(x1 + o, wall - 0.3, z1 + o, xm, ridge, z1 + o, xm, ridge, z0 - o, roof);
-      bld.tri(x1 + o, wall - 0.3, z1 + o, xm, ridge, z0 - o, x1 + o, wall - 0.3, z0 - o, roof);
-    } else {
-      const zm = (z0 + z1) / 2;
-      bld.tri(x0, wall, z1, x0, wall, z0, x0, ridge, zm, col);
-      bld.tri(x1, wall, z0, x1, wall, z1, x1, ridge, zm, col);
-      bld.tri(x1 + o, wall - 0.3, z0 - o, x0 - o, wall - 0.3, z0 - o, x0 - o, ridge, zm, roof);
-      bld.tri(x1 + o, wall - 0.3, z0 - o, x0 - o, ridge, zm, x1 + o, ridge, zm, roof);
-      bld.tri(x0 - o, wall - 0.3, z1 + o, x1 + o, wall - 0.3, z1 + o, x1 + o, ridge, zm, roof);
-      bld.tri(x0 - o, wall - 0.3, z1 + o, x1 + o, ridge, zm, x0 - o, ridge, zm, roof);
-    }
-  }
+  house(bld, h) { drawHouse(bld, h); }
 
-  tree(bld, t, rnd) {
-    const crownH = t.top - t.base;
-    bld.shape(TRUNK, t.x, 0, t.z, 1, t.base + crownH * 0.3, 1, _c.set(COLORS.trunk));
-    if (t.kind === 'pine') {
-      bld.shape(CONE, t.x, t.base, t.z, t.r, crownH, t.r, shadeOf(COLORS.pine, t.shade), 0.06, rnd);
-    } else {
-      const sy = crownH / 2;
-      bld.shape(ROUND, t.x, t.base + sy, t.z, t.r, sy, t.r, shadeOf(COLORS.crowns, t.shade), 0.08, rnd);
-    }
-  }
+  tree(bld, t, rnd) { drawTree(bld, t, rnd); }
 
   dispose() {
     for (const chunk of this.chunks.values()) chunk.userData.mesh.geometry.dispose();

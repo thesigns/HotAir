@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { BALLOON, COAST, LANDING, POLDER, PROPANE, SIM, VIEW, WORLD } from './config.js';
+import { BALLOON, COAST, COUNTRIES, LANDING, POLDER, PROPANE, SIM, VIEW, WORLD } from './config.js';
 import { Flight } from './core/flight.js';
 import { Fleet } from './core/fleet.js';
-import { Wind } from './core/wind.js';
 import { Input } from './core/input.js';
 import { loadProgress, recordFlight, recordKey, saveProgress } from './core/progress.js';
 import { clamp, dampAngle, formatMeters } from './core/utils.js';
-import { Polder, coastFor } from './world/polder.js';
+import { makeWorld } from './world/world.js';
 import { PolderView } from './world/polderView.js';
+import { HillsView } from './world/hillsView.js';
 import { Props } from './world/props.js';
 import { createSky, paintSky } from './world/sky.js';
 import { createBalloon, updateBalloon } from './models/balloon.js';
@@ -17,7 +17,6 @@ import { Hud, RATING_COLORS } from './ui/hud.js';
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const debug = params.has('debug');
-const COUNTRY = 'netherlands';
 
 // ---------- renderer and scene ----------
 const renderer = new THREE.WebGLRenderer({ canvas: $('game'), antialias: true, powerPreference: 'high-performance' });
@@ -38,7 +37,7 @@ const camera = new THREE.PerspectiveCamera(60, 1, 1, VIEW.far);
 const sky = createSky();
 paintSky(sky, WORLD.skyTop, fogColor);
 scene.add(sky);
-// far beyond the chunks: a plain polder green under the haze
+// far beyond the chunks: plain ground under the haze (the country's colour)
 const farGround = new THREE.Mesh(new THREE.PlaneGeometry(12000, 12000).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0x7aa44c }));
 farGround.position.y = -1;
 scene.add(farGround);
@@ -59,7 +58,8 @@ const sound = new Sound();
 const hud = new Hud($('hud'));
 const progress = loadProgress();
 const preset = () => PROPANE.presets[progress.preset] ?? PROPANE.presets.standard;
-const recKey = () => recordKey(COUNTRY, progress.preset);
+const country = () => COUNTRIES[progress.country] ?? COUNTRIES.netherlands;
+const recKey = () => recordKey(progress.country, progress.preset);
 
 const game = {
   mode: 'menu',     // menu | playing | paused | results
@@ -69,25 +69,25 @@ const game = {
   fps: 60,
   prev: { x: 0, y: 0, z: 0 },
 };
-let polder = null, wind = null, flight = null, view = null;
+let terrain = null, wind = null, flight = null, view = null;
 const surfaceWind = {};
 
 // A new random world: the terrain, the winds, the flight.
 function newWorld(seed) {
   game.seed = seed;
   if (view) view.dispose();
-  wind = new Wind(seed);
-  const w = wind.at(150, 0, {});
-  polder = new Polder(seed, { coast: coastFor(seed, w.dir + Math.PI) });
-  placeSea(polder.coast);
+  const C = country();
+  ({ wind, terrain } = makeWorld(progress.country, seed));
+  placeSea(terrain.coast);
+  paintLook(C);
   game.seaSaid = false;
-  flight = new Flight(polder, wind, PROPANE.cylinder * preset().cylinders, onFlightEvent);
-  flight.fleet = new Fleet(polder, wind, seed, flight.x0, flight.z0);
+  flight = new Flight(terrain, wind, PROPANE.cylinder * preset().cylinders, onFlightEvent);
+  flight.fleet = new Fleet(terrain, wind, seed, flight.x0, flight.z0);
   flight.fleet.list.forEach((a, i) => {
     if (!fleetModels[i]) { fleetModels[i] = createBalloon(1 + i, false); scene.add(fleetModels[i]); }
   });
   game.menuT = 0;
-  view = new PolderView(polder, scene);
+  view = C.terrain === 'polder' ? new PolderView(terrain, scene) : new HillsView(terrain, scene);
   view.update(flight.x0, flight.z0, true, 900);
   props.reset(flight);
   syncPrev();
@@ -95,6 +95,16 @@ function newWorld(seed) {
 }
 
 const randomSeed = () => 1 + Math.floor(Math.random() * 999999);
+
+// The country's sky, haze and far ground.
+function paintLook(C) {
+  fogColor.set(C.fog);
+  scene.fog.color.copy(fogColor);
+  scene.background.copy(fogColor);
+  paintSky(sky, C.sky, fogColor);
+  farGround.material.color.set(C.far);
+  farGround.position.y = C.farY;
+}
 
 // The far sea: a big plane from the beach outwards.
 function placeSea(c) {
@@ -145,7 +155,7 @@ function onFlightEvent(type, d) {
 
 const RATING_TITLE = { EXCEPTIONAL: 'EXCEPTIONAL!', GOOD: 'GOOD LANDING', ROUGH: 'ROUGH LANDING', CRASH: 'CRASH' };
 const CRASH_SHORT = {
-  water: 'A wet landing', house: 'You hit a building', power: 'Power line!', glass: 'Through the glass', hard: 'Far too hard', trees: 'Into the trees, too fast', balloon: 'You touched another balloon',
+  water: 'A wet landing', house: 'You hit a building', power: 'Into the wires!', glass: 'Through the glass', hard: 'Far too hard', trees: 'Into the trees, too fast', balloon: 'You touched another balloon',
 };
 
 // ---------- game flow ----------
@@ -158,7 +168,7 @@ function startFlight(seed = randomSeed()) {
   hud.popup = null;
   hud.notice = null;
   setMode('playing');
-  hud.showRating('THE NETHERLANDS', `${preset().name} · ${cylinders(preset().cylinders)}`, '#fffcf4', 2.6);
+  hud.showRating(country().name.toUpperCase(), `${preset().name} · ${cylinders(preset().cylinders)}`, '#fffcf4', 2.6);
 }
 
 function setMode(mode) {
@@ -186,14 +196,35 @@ const bestText = (rec) => (rec ? `Best ${formatMeters(rec.score)} · ${formatMet
 
 const cylinders = (n) => `${n} cylinder${n > 1 ? 's' : ''}`;
 
-// The propane presets (GDD §5.3), each with its own record.
+// The countries (GDD §8) and the propane presets (GDD §5.3); every pair has its own record.
 function renderMenu() {
+  const countries = $('countries');
+  countries.replaceChildren();
+  for (const [key, c] of Object.entries(COUNTRIES)) {
+    const btn = document.createElement('button');
+    btn.className = `preset${key === progress.country ? ' on' : ''}`;
+    const name = document.createElement('b');
+    name.textContent = c.name.replace('The ', '');
+    const sub = document.createElement('small');
+    sub.textContent = c.region ?? ' ';
+    const level = document.createElement('small');
+    level.textContent = c.level;
+    btn.append(name, sub, level);
+    btn.addEventListener('click', () => {
+      if (progress.country === key) return;
+      progress.country = key;
+      saveProgress(progress);
+      renderMenu();
+      newWorld(fixedSeed());   // the menu shows the country chosen
+    });
+    countries.appendChild(btn);
+  }
   const list = $('presets');
   list.replaceChildren();
   for (const [key, p] of Object.entries(PROPANE.presets)) {
     const btn = document.createElement('button');
     btn.className = `preset${key === progress.preset ? ' on' : ''}`;
-    const rec = progress.records[recordKey(COUNTRY, key)];
+    const rec = progress.records[recordKey(progress.country, key)];
     const name = document.createElement('b');
     name.textContent = p.name;
     const sub = document.createElement('small');
@@ -248,7 +279,7 @@ const MESSAGES = {
   water: () => 'A wet landing. Ditches and canals are everywhere – land on dry ground.',
   house: () => 'You hit a building. Keep clear of them when you come down low.',
   glass: () => 'You came down on a greenhouse. Glass roofs are no place to land.',
-  power: () => 'You flew into a power line – the deadliest danger in ballooning. Climb well above the wires, or stay clear of them.',
+  power: () => 'You flew into the wires – power lines and cable cars are the deadliest danger in ballooning. Climb well above them, or stay clear.',
   balloon: () => 'You touched another balloon. Look above and below before you climb or sink through the height of another one.',
   hard: (r) => `You hit the ground at ${r.sink.toFixed(1)} m/s. Burn before the ground to soften the touchdown.`,
   trees: (r) => (r.rating === 'CRASH' ? 'You came down into the trees too fast.' : 'You came down in the trees.'),
@@ -305,7 +336,7 @@ function updateCamera(pos, dt) {
   if (game.mode === 'menu') cam.yaw += dt * 0.05;
   const h = cam.dist * Math.cos(cam.pitch);
   camera.position.set(target.x - Math.sin(cam.yaw) * h, target.y + cam.dist * Math.sin(cam.pitch), target.z + Math.cos(cam.yaw) * h);
-  const floor = polder.height(camera.position.x, camera.position.z) + 1.5;
+  const floor = terrain.height(camera.position.x, camera.position.z) + 1.5;
   if (camera.position.y < floor) camera.position.y = floor;
   camera.lookAt(target);
   sky.position.copy(camera.position);
@@ -339,10 +370,10 @@ function ambient(dt) {
   if (ambientT > 0 || game.mode !== 'playing') return;
   ambientT = 0.5;
   const b = flight.balloon;
-  polder.sounds(b.x, b.z, 700, near);
-  sound.ambient({ agl: flight.agl, ...near });
+  terrain.sounds(b.x, b.z, 700, near);
+  sound.ambient({ agl: flight.agl, ...near, bells: country().terrain === 'alps' });
   if (!game.seaSaid && flight.phase === 'air' && near.sea < 450) {
-    const s0 = polder.coastS(b.x, b.z), s1 = polder.coastS(b.x + b.vx, b.z + b.vz);
+    const s0 = terrain.coastS(b.x, b.z), s1 = terrain.coastS(b.x + b.vx, b.z + b.vz);
     if (s1 > s0) {
       game.seaSaid = true;
       radio('That\'s the sea ahead! Land before the beach runs out.', '#ffc53d');
@@ -462,7 +493,7 @@ if (debug) {
     game, input, sound, camera, cam, progress, startFlight,
     get flight() { return flight; },
     get balloon() { return flight.balloon; },
-    get polder() { return polder; },
+    get terrain() { return terrain; },
     get wind() { return wind; },
     get view() { return view; },
   };

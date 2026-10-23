@@ -105,7 +105,7 @@ export class Hud {
     // the track leads into a power line (GDD §7)
     if (flight.powerAhead !== null && !st.threat) {
       const t = flight.powerAhead;
-      if (blink || t > 10) this.text(`POWER LINE AHEAD · ${Math.ceil(t)} s`, w / 2 - 10, 162, 19, t > 10 ? AMBER : RED, 'center', 900, TITLE, w - 110);
+      if (blink || t > 10) this.text(`WIRES AHEAD · ${Math.ceil(t)} s`, w / 2 - 10, 162, 19, t > 10 ? AMBER : RED, 'center', 900, TITLE, w - 110);
     }
     // a balloon on a collision course: where it is and when
     const th = st.threat;

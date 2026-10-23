@@ -88,6 +88,28 @@ export const WIND = {
   driftDir: 22,         // directions wander by up to this during a flight [deg]
   driftSpeed: 0.3,      // speeds by up to this fraction
   driftPeriod: [140, 260],             // seconds
+  prevailing: null,     // the usual direction the wind comes from [deg range], or anywhere
+};
+
+// The countries (GDD §8): their look, their winds (over WIND) and which terrain they are built from.
+export const COUNTRIES = {
+  netherlands: {
+    name: 'The Netherlands', level: 'Easy', terrain: 'polder',
+    fog: 0xd9d6cc, sky: 0x7fa7cf, far: 0x7aa44c, farY: -1,
+    wind: { prevailing: [195, 295] },
+  },
+  italy: {
+    name: 'Italy', region: 'Tuscany', level: 'Medium', terrain: 'tuscany',
+    fog: 0xe6dac2, sky: 0x86acd2, far: 0x9ea45c, farY: 10,
+    // light, bent by the hills
+    wind: { speed: [[2, 6], [6, 12], [9, 17], [12, 22]], veer: [[20, 60], [15, 55], [10, 45]] },
+  },
+  switzerland: {
+    name: 'Switzerland', level: 'Hard', terrain: 'alps',
+    fog: 0xd2dce6, sky: 0x6c9ed4, far: 0x6f8f58, farY: 100,
+    // calm in the valleys, stronger over the ridges
+    wind: { heights: [0, 80, 220, 380], speed: [[2, 6], [5, 11], [12, 22], [18, 30]] },
+  },
 };
 
 // The other balloons (GDD §6.3).
@@ -148,6 +170,43 @@ export const POLDER = {
   cows: 0.35,           // chance of a herd in a pasture
   village: 0.4,         // chance of a village in a 5 × 5 cell of blocks
   glass: 0.22,          // chance of a cluster of greenhouses in a 4 × 4 cell
+};
+
+// The hilly countries (js/world/hills.js): blocks of things, chunks drawn as a height grid.
+export const HILLS = {
+  block: 240,           // [m]
+  chunk: 2,             // blocks per render chunk side
+  cell: 12,             // the height grid [m]
+  viewRadius: 1900,
+  budget: 6,            // milliseconds a frame may spend building chunks
+};
+
+// Tuscany (GDD §8.2).
+export const TUSCANY = {
+  hillScale: 650,       // the rolling hills' wavelength … [m]
+  hillHeight: 120,      // … and height [m]
+  field: 110,           // fields are about this big [m]
+  farm: 0.5,            // chance of a farmhouse in a block
+  townCell: 900,        // at most one hilltop town in a cell this big …
+  townOdds: 0.55,
+  townAbove: 55,        // … on a hill at least this high [m]
+  townRadius: 62,
+};
+
+// Switzerland (GDD §8.3): valleys along x, ridges between them.
+export const ALPS = {
+  spacing: 1150,        // from one valley to the next [m]
+  meander: 110,         // [m]
+  floorWidth: 90,       // the flat floor's half-width, ±35 [m]
+  floor: 100,           // the valley floors' height above sea level – the air is already thinner [m]
+  ridge: [170, 400],    // the ridges rise this much above the floors: passes … peaks [m]
+  snow: 455,            // [m]
+  river: 5,             // the river's half-width [m]
+  road: 20,             // the road beside it [m]
+  lakeEvery: 2200, lakeOdds: 0.3,
+  villageEvery: 1500,
+  cableEvery: 1800, cableLength: 360, cableSag: 10,
+  launchSide: 40,       // the launch field, this far from the river (away from the road) [m]
 };
 
 // The North Sea coast (GDD §8.1): a belt of dunes, the beach, the sea – usually somewhere downwind.

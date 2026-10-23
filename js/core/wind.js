@@ -8,19 +8,20 @@ const TAU = Math.PI * 2;
 // the flight, so the best height has to be found again. Directions are meteorological: where the wind comes
 // from, clockwise from north (−Z); +X is east.
 export class Wind {
-  constructor(seed) {
+  // cfg: WIND with a country's own values over it (COUNTRIES[…].wind)
+  constructor(seed, cfg = WIND) {
     const rnd = mulberry32(seed ^ 0x5eed);
-    // the Dutch prevailing winds come from the south-west and west
-    let dir = rnd() < 0.65 ? range(rnd, [195, 295]) : rnd() * 360;
-    this.nodes = WIND.heights.map((h, i) => {
-      if (i > 0) dir += range(rnd, WIND.veer[i - 1]);
+    // the prevailing winds (the Netherlands: from the south-west and west)
+    let dir = cfg.prevailing && rnd() < 0.65 ? range(rnd, cfg.prevailing) : rnd() * 360;
+    this.nodes = cfg.heights.map((h, i) => {
+      if (i > 0) dir += range(rnd, cfg.veer[i - 1]);
       return {
         h,
         dir: dir * DEG,
-        kmh: range(rnd, WIND.speed[i]),
-        dirAmp: WIND.driftDir * DEG * (0.4 + 0.6 * rnd()) * (rnd() < 0.5 ? -1 : 1),
-        speedAmp: WIND.driftSpeed * (0.3 + 0.7 * rnd()),
-        period: range(rnd, WIND.driftPeriod),
+        kmh: range(rnd, cfg.speed[i]),
+        dirAmp: cfg.driftDir * DEG * (0.4 + 0.6 * rnd()) * (rnd() < 0.5 ? -1 : 1),
+        speedAmp: cfg.driftSpeed * (0.3 + 0.7 * rnd()),
+        period: range(rnd, cfg.driftPeriod),
         phase: rnd() * TAU,
         phase2: rnd() * TAU,
       };

@@ -5,11 +5,18 @@ Low-poly 3D, a mobile-first browser game. Design: [docs/HotAir-GDD.md](docs/HotA
 
 **Play: https://thesigns.github.io/HotAir/**
 
-Status: **M1** – the Netherlands: a procedural polder with ditches, canals, roads, farms, windmills,
-cows, villages with a church, greenhouses, power lines and – in most worlds – the North Sea coast with
-dunes, a beach and the sea. Other balloons with their own pilots. The flight model with burner lag,
-winds that change with height and time, the pilot balloon, the wind ladder, three propane presets with
-their own records, landing ratings, settings, synthesized sound with a soundscape below.
+Status: **M2** – three countries, every world procedural:
+
+- **The Netherlands** (easy): the polder with ditches, canals, roads, farms, windmills, cows, villages
+  with a church, greenhouses, power lines and – in most worlds – the North Sea coast with dunes and a beach.
+- **Italy – Tuscany** (medium): rolling hills, a patchwork of fields, vineyards and olive groves (no place
+  to land), cypress drives to stone farmhouses, towns on the hilltops.
+- **Switzerland** (hard): deep valleys with rivers, lakes, villages and chalets, pine woods, rock and snow
+  on the ridges, cable cars, winds that follow the valleys low down, and thin air.
+
+Other balloons with their own pilots. The flight model with burner lag, winds that change with height
+and time, the pilot balloon, the wind ladder, three propane presets with records per country, landing
+ratings, settings, help, synthesized sound with a soundscape below.
 
 ## Running locally
 
@@ -58,6 +65,6 @@ come down ROUGH instead of crashing.
 
 ```
 node tools/feel.mjs        # the flight model against the GDD §5.1 table
-node tools/fly.mjs 60 150  # 60 whole flights with a scripted pilot at ~150 m
+node tools/fly.mjs 60 150 italy  # 60 whole flights with a scripted pilot at ~150 m (netherlands | italy | switzerland)
 node tools/traffic.mjs 30  # the other balloons around scripted flights
 ```

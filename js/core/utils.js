@@ -47,3 +47,29 @@ export function weighted(rnd, list) {
 
 // 1 840 – thousands separated by a thin space.
 export const formatMeters = (m) => String(Math.round(m)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
+// Smooth value noise in 2D from a seed: n(x, y) in 0…1, one feature per unit.
+export function makeNoise(seed) {
+  const at = (i, j) => hash(seed, i, j) / 4294967296;
+  return (x, y) => {
+    const i = Math.floor(x), j = Math.floor(y);
+    const fx = smoothstep(x - i), fy = smoothstep(y - j);
+    const a = at(i, j), b = at(i + 1, j), c = at(i, j + 1), d = at(i + 1, j + 1);
+    return lerp(lerp(a, b, fx), lerp(c, d, fx), fy);
+  };
+}
+
+// Fractal noise: a few octaves of makeNoise, 0…1.
+export function makeFbm(seed, octaves = 4) {
+  const n = makeNoise(seed);
+  return (x, y) => {
+    let v = 0, amp = 0.5, f = 1, norm = 0;
+    for (let o = 0; o < octaves; o++) {
+      v += n(x * f + o * 17.3, y * f - o * 9.1) * amp;
+      norm += amp;
+      amp *= 0.5;
+      f *= 2;
+    }
+    return v / norm;
+  };
+}

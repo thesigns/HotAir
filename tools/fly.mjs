@@ -1,13 +1,13 @@
 // Whole flights with a scripted pilot over many seeds: distances, landing ratings, crashes.
-// Run: node tools/fly.mjs [flights] [height]
+// Run: node tools/fly.mjs [flights] [height] [country]
 import { Flight } from '../js/core/flight.js';
-import { Wind } from '../js/core/wind.js';
-import { Polder, coastFor } from '../js/world/polder.js';
+import { makeWorld } from '../js/world/world.js';
 import { PROPANE, SIM } from '../js/config.js';
 
 const dt = 1 / SIM.hz;
 const N = Number(process.argv[2] ?? 40);
 const H = Number(process.argv[3] ?? 150);
+const COUNTRY = process.argv[4] ?? 'netherlands';
 
 // A pilot that flies a vertical speed by reading the envelope temperature (with some hysteresis).
 function pilot(b, vWant, st) {
@@ -20,9 +20,8 @@ function pilot(b, vWant, st) {
 const tally = {};
 let sumDist = 0, sumScore = 0, sumTime = 0;
 for (let seed = 1; seed <= N; seed++) {
-  const wind = new Wind(seed), w = wind.at(150, 0, {});
-  const polder = new Polder(seed, { coast: coastFor(seed, w.dir + Math.PI) });
-  const flight = new Flight(polder, wind, PROPANE.cylinder * PROPANE.presets.standard.cylinders);
+  const { wind, terrain } = makeWorld(COUNTRY, seed);
+  const flight = new Flight(terrain, wind, PROPANE.cylinder * PROPANE.presets.standard.cylinders);
   const b = flight.balloon;
   const st = { burning: false };
   let landing = false;
@@ -44,5 +43,5 @@ for (let seed = 1; seed <= N; seed++) {
   sumScore += r.score;
   sumTime += flight.t;
 }
-console.log(`${N} flights at ~${H} m: average ${Math.round(sumDist / N)} m, score ${Math.round(sumScore / N)}, ${(sumTime / N / 60).toFixed(1)} min`);
+console.log(`${COUNTRY}, ${N} flights at ~${H} m: average ${Math.round(sumDist / N)} m, score ${Math.round(sumScore / N)}, ${(sumTime / N / 60).toFixed(1)} min`);
 console.log(tally);

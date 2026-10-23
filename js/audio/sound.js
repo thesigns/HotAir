@@ -74,12 +74,14 @@ export class Sound {
   }
 
   // The ground below (every half second): distances to the nearest cow, farm, church and the sea [m].
-  ambient({ agl, cow, farm, church, sea }) {
+  // bells: the cows wear bells (Switzerland).
+  ambient({ agl, cow, farm, church, sea, bells = false }) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     const low = clamp(1 - agl / 260, 0, 1);
     this.surf.gain.setTargetAtTime(0.11 * clamp(1 - sea / 800, 0, 1) * (0.35 + 0.65 * low), t, 0.8);
     if (cow < 450 && Math.random() < 0.07) this.moo(0.16 * (1 - cow / 450) * low);
+    if (bells && cow < 500 && Math.random() < 0.5) this.cowbell(0.06 * (1 - cow / 500) * low);
     if (farm < 260 && Math.random() < 0.04) this.bark(0.12 * (1 - farm / 260) * low);
     if (church < 1000) {
       const v = 0.12 * (1 - church / 1000) * (0.4 + 0.6 * low);
@@ -115,6 +117,14 @@ export class Sound {
     o.connect(bp).connect(g).connect(this.master);
     o.start(t);
     o.stop(t + d + 0.05);
+  }
+
+  // A cowbell: a dull, hollow clank or two.
+  cowbell(volume) {
+    if (volume < 0.003) return;
+    const f = 620 + Math.random() * 380;
+    this.tone(f, volume, 0.35, 0, [[1, 1], [1.48, 0.6], [2.7, 0.3]]);
+    if (Math.random() < 0.5) this.tone(f * 1.02, volume * 0.7, 0.3, 0.18 + Math.random() * 0.1, [[1, 1], [1.48, 0.6]]);
   }
 
   // A dog at a farm: two or three short barks.

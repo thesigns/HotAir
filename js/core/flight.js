@@ -9,6 +9,8 @@ import { dampAngle } from './utils.js';
 const W = {};
 const _near = { trees: [], houses: [] };
 const _wires = [];
+// where a landing is rough at best: in the trees, among vines, olive trees or rocks (GDD §6.4, §8)
+const ROUGH_SURFACES = new Set(['forest', 'vines', 'olives', 'rock']);
 
 // The balloon's radius at a height above the basket floor: the basket, the ropes, the envelope.
 function radiusAt(h) {
@@ -28,7 +30,8 @@ export function touchesWires(terrain, x, y, z) {
   for (const w of terrain.wires(x, z, _wires)) {
     const r = radiusAt(w.h - y);
     if (r < 0) continue;
-    const d = Math.min(Math.abs(w.cross), Math.abs(w.cross - POWER.spread), Math.abs(w.cross + POWER.spread));
+    const sp = w.spread ?? POWER.spread;
+    const d = Math.min(Math.abs(w.cross), Math.abs(w.cross - sp), Math.abs(w.cross + sp));
     if (d < r) return true;
   }
   return false;
@@ -67,6 +70,7 @@ export class Flight {
     this.reserveSaid = false;
     this.emptySaid = false;
     this.inTrees = false;
+    this.lastGround = null;
     this.powerAhead = null;      // seconds until the present track and sink rate lead into a power line
     this.wireCheck = 0;
     this.ladder = Array.from({ length: Math.ceil(LADDER.top / LADDER.bin) + 1 }, () => null);
@@ -88,12 +92,16 @@ export class Flight {
     const b = this.balloon, terrain = this.terrain;
     this.t += dt;
     const ground = terrain.height(b.x, b.z);
+    // the ground rising under a balloon carried against a hillside counts in a touchdown
+    const groundRate = this.lastGround === null ? 0 : (ground - this.lastGround) / dt;
+    this.lastGround = ground;
     const agl = b.y - ground;
     this.wind.at(Math.max(0, agl), this.t, W);
+    terrain.channel?.(b.x, b.z, b.y, W);
 
     // on the ground after a touchdown, the vent line deflates the balloon
     if (this.phase === 'ground' && vent) b.deflate = Math.min(1, b.deflate + dt / GROUND.deflate);
-    b.step(dt, burn, vent, W.x, W.z, ground, this.phase === 'launch');
+    b.step(dt, burn, vent, W.x, W.z, ground, this.phase === 'launch', groundRate);
     this.learn(agl, W);
     if (this.fleet) {
       this.fleet.update(dt, this.t, b, this.learnFleet);
@@ -152,7 +160,7 @@ export class Flight {
         this.groundTime = 0;
         const tipped = slope(terrain, b.x, b.z) > GROUND.maxSlope;
         this.touchdown = { x: b.x, z: b.z, sink: this.sink, surface, tipped };
-        this.onEvent('touchdown', { sink: this.sink, rating: rate(this.sink, { forest: surface === 'forest', tipped }) });
+        this.onEvent('touchdown', { sink: this.sink, rating: rate(this.sink, { forest: ROUGH_SURFACES.has(surface), tipped }) });
       }
     }
 
@@ -181,7 +189,7 @@ export class Flight {
 
   finish(how = 'landed') {
     const td = this.touchdown;
-    const rating = rate(td.sink, { forest: td.surface === 'forest', tipped: td.tipped });
+    const rating = rate(td.sink, { forest: ROUGH_SURFACES.has(td.surface), tipped: td.tipped });
     const distance = Math.hypot(td.x - this.x0, td.z - this.z0);
     this.result = { rating, distance, score: Math.round(distance * LANDING.mult[rating]), how, sink: td.sink };
     this.phase = rating === 'CRASH' ? 'crashed' : 'done';
@@ -226,6 +234,7 @@ export class Flight {
     p.y += PIBAL.climb * dt;
     const agl = p.y - this.terrain.height(p.x, p.z);
     const w = this.wind.at(agl, this.t, {});
+    this.terrain.channel?.(p.x, p.z, p.y, w);
     p.x += w.x * dt;
     p.z += w.z * dt;
     if (agl <= LADDER.top) {
@@ -250,11 +259,11 @@ export class Flight {
   }
 }
 
-// The roof height over a point of a house (a gable roof, its ridge along ridgeAxis).
+// The roof height over a point of a house (a gable roof, its ridge along ridgeAxis; standing on the ground at h.y).
 export function roofAt(h, x, z) {
   if (x < h.x0 || x > h.x1 || z < h.z0 || z > h.z1) return -Infinity;
   const across = h.ridgeAxis === 'z' ? Math.abs(x - (h.x0 + h.x1) / 2) / ((h.x1 - h.x0) / 2) : Math.abs(z - (h.z0 + h.z1) / 2) / ((h.z1 - h.z0) / 2);
-  return h.wall + (h.ridge - h.wall) * (1 - across);
+  return (h.y ?? 0) + h.wall + (h.ridge - h.wall) * (1 - across);
 }
 
 function slope(terrain, x, z) {

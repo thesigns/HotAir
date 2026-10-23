@@ -41,8 +41,8 @@ export class Balloon {
   }
 
   // One fixed step. wx, wz: the wind at the balloon's height [m/s]; ground: the ground height under the basket;
-  // tethered: still tied to the car at the launch.
-  step(dt, burn, vent, wx, wz, ground, tethered = false) {
+  // tethered: still tied to the car at the launch; groundRate: how fast the ground under the basket rises [m/s].
+  step(dt, burn, vent, wx, wz, ground, tethered = false, groundRate = 0) {
     const c = this.cfg, g = ATMOS.g;
     const Ta = airTemp(this.y);
     this.burning = burn && this.propane > 0 && this.deflate === 0;
@@ -70,10 +70,9 @@ export class Balloon {
 
     if (this.y <= ground) {
       this.y = ground;
-      if (this.vy < 0) {
-        if (!this.onGround) this.impact = -this.vy;
-        this.vy = 0;
-      }
+      // the closing speed: sinking, or carried against rising ground
+      if (!this.onGround) this.impact = Math.max(0, Math.max(0, groundRate) - this.vy);
+      if (this.vy < 0) this.vy = 0;
       this.onGround = true;
     } else if (this.y > ground + 0.05) {
       this.onGround = false;
