@@ -11,12 +11,21 @@ import { HillsView } from './world/hillsView.js';
 import { Props } from './world/props.js';
 import { createSky, paintSky } from './world/sky.js';
 import { createBalloon, updateBalloon } from './models/balloon.js';
+import { loadModels } from './models/library.js';
 import { Sound } from './audio/sound.js';
 import { Hud, RATING_COLORS } from './ui/hud.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const debug = params.has('debug');
+
+// the models made in Blender (assets/models/models.glb) before anything is built from them
+try {
+  await loadModels();
+} catch (err) {
+  $('loading').textContent = 'Could not load the models.';
+  throw err;
+}
 
 // ---------- renderer and scene ----------
 const renderer = new THREE.WebGLRenderer({ canvas: $('game'), antialias: true, powerPreference: 'high-performance' });

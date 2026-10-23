@@ -1,6 +1,9 @@
 import { TUSCANY } from '../config.js';
 import { clamp, hash, makeFbm, mulberry32, range, smoothstep, weighted } from '../core/utils.js';
-import { Hills, box } from './hills.js';
+import { Hills, faceTowards } from './hills.js';
+import { footprint as footprintOf } from '../models/place.js';
+
+const overlaps = (a, b, m) => a.x0 - m < b.x1 && a.x1 + m > b.x0 && a.z0 - m < b.z1 && a.z1 + m > b.z0;
 
 // Tuscany (GDD §8.2): rolling hills, a patchwork of irregular fields (grain, sunflowers, ploughed earth,
 // dry pasture), vineyards and olive groves on the slopes, oak woods where it is steep, stone farmhouses at
@@ -20,8 +23,7 @@ const COLORS = {
   forest: ['#58703a', '#4f6834'],
   village: ['#b8a888'],
 };
-const STONE = ['#d9c4a0', '#cdb38a', '#e0cfae', '#c9a77c'];
-const TERRACOTTA = ['#b0583a', '#a24f33', '#bb6543'];
+const TOWN_HOUSES = ['it_house_a', 'it_house_b', 'it_house_c'];
 
 export class Tuscany extends Hills {
   constructor(seed) {
@@ -150,6 +152,15 @@ export class Tuscany extends Hills {
         if (!vine && run) { run.x1 = x; b.rows.push(run); run = null; }
       }
     }
+    // round bales of hay in a cut grain field
+    for (let k = 0; k < 3; k++) {
+      const x = x0 + 20 + rnd() * (x1 - x0 - 40), z = z0 + 20 + rnd() * (z1 - z0 - 40);
+      if (this.cover(x, z) !== 'grain' || rnd() < 0.5) continue;
+      for (let n = 0; n < 4 + Math.floor(rnd() * 6); n++) {
+        const bx = x + (rnd() - 0.5) * 40, bz = z + (rnd() - 0.5) * 40;
+        if (this.cover(bx, bz) === 'grain') this.prop('hay_bale', bx, bz, rnd() * Math.PI);
+      }
+    }
     // a hilltop town: stone houses round the square, a tower
     const t = this.townAt((x0 + x1) / 2, (z0 + z1) / 2);
     if (t && t.x >= x0 && t.x < x1 && t.z >= z0 && t.z < z1) this.townHouses(b, t, rnd);
@@ -166,10 +177,7 @@ export class Tuscany extends Hills {
   }
 
   farmhouse(b, x, z, rnd) {
-    const w = range(rnd, [11, 15]), d = range(rnd, [9, 12]), along = rnd() < 0.5;
-    const wall = STONE[Math.floor(rnd() * STONE.length)], roof = TERRACOTTA[Math.floor(rnd() * TERRACOTTA.length)];
-    this.house(b, { ...box(x, z, along ? w : d, along ? d : w), wall: 6, ridge: 8.6, wallColor: wall, roof, ridgeAxis: along ? 'x' : 'z' });
-    this.house(b, { ...box(x + (along ? 0 : d + 4), z + (along ? d + 4 : 0), 7, 7), wall: 3.6, ridge: 5.4, wallColor: wall, roof, ridgeAxis: along ? 'x' : 'z' });
+    this.building('it_farmhouse', x, z, Math.floor(rnd() * 4) * Math.PI / 2);
     b.farm = { x, z };
     // the drive: straight away from the house, white gravel, cypresses both sides
     const ang = rnd() * Math.PI * 2, len = range(rnd, [90, 180]);
@@ -186,20 +194,20 @@ export class Tuscany extends Hills {
 
   townHouses(b, t, rnd) {
     // the tower at the top
-    this.house(b, { ...box(t.x, t.z, 7, 7), wall: 30, ridge: 30, wallColor: '#c9a77c', kind: 'tower', spire: 33, spireColor: '#a24f33', ridgeAxis: 'z' });
+    this.building('it_tower', t.x, t.z, 0, 'tower');
     b.church = { x: t.x, z: t.z };
-    // rings of houses round the square
-    for (const [ring, n] of [[24, 9], [40, 15], [56, 20]]) {
+    // rings of houses round the square, their fronts to the square
+    const taken = [];
+    for (const [ring, n] of [[22, 8], [38, 13], [54, 18]]) {
       for (let k = 0; k < n; k++) {
-        if (rnd() < 0.15) continue;
-        const a = (k / n) * Math.PI * 2 + rnd() * 0.2, r = ring + (rnd() - 0.5) * 6;
+        if (rnd() < 0.12) continue;
+        const a = (k / n) * Math.PI * 2 + rnd() * 0.2, r = ring + (rnd() - 0.5) * 5;
         const x = t.x + Math.cos(a) * r, z = t.z + Math.sin(a) * r;
-        const radial = Math.abs(Math.cos(a)) > Math.abs(Math.sin(a));
-        const w = range(rnd, [7, 10]), d = range(rnd, [8, 11]), tall = rnd() < 0.4;
-        this.house(b, {
-          ...box(x, z, radial ? d : w, radial ? w : d), wall: tall ? 8 : 5, ridge: tall ? 10 : 7,
-          wallColor: STONE[Math.floor(rnd() * STONE.length)], roof: TERRACOTTA[Math.floor(rnd() * TERRACOTTA.length)], ridgeAxis: radial ? 'z' : 'x',
-        });
+        const name = TOWN_HOUSES[Math.floor(rnd() * TOWN_HOUSES.length)];
+        const yaw = faceTowards(-Math.cos(a), -Math.sin(a));
+        const fp = footprintOf(name, x, z, yaw);
+        if (taken.some((o) => overlaps(o, fp, 1.5)) || Math.hypot(x - t.x, z - t.z) < 9) continue;
+        taken.push(this.building(name, x, z, yaw));
       }
     }
     // cypresses round the town

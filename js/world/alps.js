@@ -1,6 +1,6 @@
 import { ALPS } from '../config.js';
 import { clamp, hash, makeFbm, makeNoise, mulberry32, range, smoothstep } from '../core/utils.js';
-import { Hills, box } from './hills.js';
+import { Hills, faceTowards } from './hills.js';
 
 // Switzerland (GDD §8.3): long valleys running east–west, each with a river, a road, meadows, chalets and
 // villages on its narrow flat floor, and the odd lake; pine woods on the lower slopes, alpine meadows above,
@@ -14,7 +14,6 @@ const COLORS = {
   rock: ['#8d8a84', '#7f7c77', '#99958e'], snow: ['#f2f4f6', '#e6ebf0'], water: ['#5e8fb0'], road: ['#7c7c76'],
   village: ['#8fae5e'],
 };
-const WOOD = ['#7a4f2e', '#6b4427', '#87593a'];
 
 export class Alps extends Hills {
   constructor(seed) {
@@ -191,23 +190,21 @@ export class Alps extends Hills {
   village(b, k, x, rnd) {
     const zc = this.centre(k, x), w = this.halfWidth(k, x);
     const side = rnd() < 0.5 ? -1 : 1, z = zc + side * (w * 0.55 + ALPS.river);
-    this.house(b, { ...box(x, z, 7, 7), wall: 20, ridge: 20, wallColor: '#f2efe6', kind: 'tower', spire: 32, spireColor: '#5a5a5e', ridgeAxis: 'z' });
-    this.house(b, { ...box(x + 11, z, 15, 9), wall: 7, ridge: 11, wallColor: '#f2efe6', roof: '#5a5a5e', ridgeAxis: 'x' });
+    this.building('ch_church', x, z, faceTowards(0, -side), 'tower');
     b.church = { x, z };
     for (let n = 0; n < 16; n++) {
       const hx = x + (rnd() - 0.5) * 220, hz = z + (rnd() - 0.5) * w * 1.1;
       const c = this.cover(hx, hz);
-      if (c === 'water' || c === 'road' || Math.abs(hx - x) < 22) continue;
+      if (c === 'water' || c === 'road' || Math.hypot(hx - x, hz - z) < 26) continue;
       this.chalet(b, hx, hz, rnd);
     }
   }
 
+  // A chalet (or a hay barn), its front to the valley's middle.
   chalet(b, x, z, rnd) {
-    const along = rnd() < 0.5, w = range(rnd, [8, 11]), d = range(rnd, [7, 9]);
-    this.house(b, {
-      ...box(x, z, along ? w : d, along ? d : w), wall: 4.5, ridge: 7.5,
-      wallColor: WOOD[Math.floor(rnd() * WOOD.length)], roof: '#5a5a5e', ridgeAxis: along ? 'x' : 'z',
-    });
+    const { k } = this.where(x, z);
+    const yaw = faceTowards(0, this.centre(k, x) - z);
+    this.building(rnd() < 0.7 ? 'ch_chalet' : 'ch_barn', x, z, yaw);
     b.farm = { x, z };
   }
 
@@ -232,6 +229,9 @@ export class Alps extends Hills {
       if (y < g + 10) { yA += g + 10 - y; yB += g + 10 - y; }
     }
     const c = { x0: x, z0: zA, x1: x, z1: zB, y0: yA, y1: yB, g0: gA, g1: gB, sag: ALPS.cableSag, spread: 3.5, owner: b };
+    // the stations at both ends, open towards the cable
+    this.building('ch_station', x, zA, faceTowards(0, zA - zB));
+    this.building('ch_station', x, zB, faceTowards(0, zB - zA));
     // every block it crosses knows it (for the collisions); the owner draws it
     const seen = new Set();
     for (let u = 0; u <= 1; u += 0.05) {

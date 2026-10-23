@@ -30,7 +30,7 @@ export function touchesWires(terrain, x, y, z) {
   for (const w of terrain.wires(x, z, _wires)) {
     const r = radiusAt(w.h - y);
     if (r < 0) continue;
-    const sp = w.spread ?? POWER.spread;
+    const sp = w.spread ?? 0;
     const d = Math.min(Math.abs(w.cross), Math.abs(w.cross - sp), Math.abs(w.cross + sp));
     if (d < r) return true;
   }

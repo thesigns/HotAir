@@ -1,7 +1,6 @@
 import * as THREE from 'three';
-import { HILLS } from '../config.js';
-import { hash, mulberry32 } from '../core/utils.js';
-import { BOX, Builder, ROUND, _c, drawCow, drawHouse, drawTree } from './kit.js';
+import { DETAIL, HILLS } from '../config.js';
+import { Builder, drawCow, drawTree } from './kit.js';
 
 // Draws a hilly country (js/world/hills.js) in chunks of HILLS.chunk × HILLS.chunk blocks around the balloon:
 // the ground as a height grid coloured by the land cover, and the things on it, merged into one flat-shaded
@@ -10,8 +9,6 @@ import { BOX, Builder, ROUND, _c, drawCow, drawHouse, drawTree } from './kit.js'
 const RIBBONS = { gravel: '#e8dfc8', road: '#7c7c76', river: '#6d9cb4', lake: '#6d9cb4' };
 const VINE = '#4f6e2c';
 const CABLE = '#2d2f33';
-const STATION = '#8a8f96';
-const GONDOLA = '#d6362c';
 
 const colors = new Map();
 const parsed = (hex) => {
@@ -47,8 +44,16 @@ export class HillsView {
             if (d < bestD && (!all || d < near)) { bestD = d; best = [ci, cj]; }
           }
         }
+        // nothing missing: a far chunk coming near is built again in full
+        if (!best && !all) {
+          for (const mesh of this.chunks.values()) {
+            const { ci, cj } = mesh.userData;
+            const d = Math.hypot((ci + 0.5) * S - x, (cj + 0.5) * S - z);
+            if (mesh.userData.far && d < DETAIL.upgrade && d < bestD) { bestD = d; best = [ci, cj]; }
+          }
+        }
         if (!best) break;
-        this.job = this.build(...best);
+        this.job = this.build(...best, bestD > DETAIL.near);
       }
       if (this.job.next().done) this.job = null;
     }
@@ -66,9 +71,9 @@ export class HillsView {
 
   // A generator: one step at a time (a block filled, a few rows of the ground, a block's things), so a chunk
   // is built over several frames.
-  *build(ci, cj) {
+  *build(ci, cj, far = false) {
     const t = this.terrain, bld = new Builder();
-    const n = HILLS.chunk, B = HILLS.block, G = HILLS.cell;
+    const n = HILLS.chunk, B = HILLS.block, G = HILLS.cell * (far ? 2 : 1);
     for (let i = ci * n - 1; i <= ci * n + n; i++) {
       for (let j = cj * n - 1; j <= cj * n + n; j++) if (t.ensure(i, j)) yield;
     }
@@ -94,24 +99,25 @@ export class HillsView {
     // the things on it
     for (let i = ci * n; i < ci * n + n; i++) {
       for (let j = cj * n; j < cj * n + n; j++) {
-        this.block(bld, t.block(i, j));
+        this.block(bld, t.block(i, j), far);
         yield;
       }
     }
     const mesh = new THREE.Mesh(bld.build(), this.material);
     mesh.matrixAutoUpdate = false;
-    mesh.userData = { ci, cj };
+    mesh.userData = { ci, cj, far };
+    const old = this.chunks.get(`${ci},${cj}`);
+    if (old) { this.group.remove(old); old.geometry.dispose(); }
     this.group.add(mesh);
     this.chunks.set(`${ci},${cj}`, mesh);
   }
 
-  block(bld, b) {
-    const rnd = mulberry32(hash(this.terrain.seed, b.i, b.j, 98));
+  block(bld, b, far) {
     for (const r of b.ribbons) this.ribbon(bld, r);
     for (const v of b.rows) this.vines(bld, v);
-    for (const h of b.houses) drawHouse(bld, h);
-    for (const tr of b.trees) drawTree(bld, tr, rnd);
-    for (const c of b.cows) drawCow(bld, c);
+    for (const p of b.props) bld.model(p.m, p.x, p.y, p.z, p.yaw);
+    for (const tr of b.trees) drawTree(bld, tr, far);
+    if (!far) for (const c of b.cows) drawCow(bld, c);
     for (const c of b.cables) if (c.owner === b) this.cable(bld, c);
   }
 
@@ -141,11 +147,10 @@ export class HillsView {
     }
   }
 
-  // A cable car: the stations, two cables (thin ribbons) and a pair of gondolas.
+  // A cable car: two cables (thin ribbons) and a pair of gondolas (the stations are buildings).
   cable(bld, c) {
     const dx = c.x1 - c.x0, dz = c.z1 - c.z0, len = Math.hypot(dx, dz);
     const sx = -dz / len, sz = dx / len;
-    for (const [x, g, z, y] of [[c.x0, c.g0, c.z0, c.y0], [c.x1, c.g1, c.z1, c.y1]]) bld.shape(BOX, x, g, z, 8, y - g + 2, 8, parsed(STATION));
     const segs = 16, wire = parsed(CABLE);
     for (const side of [-c.spread, c.spread]) {
       for (let s = 0; s < segs; s++) {
@@ -159,8 +164,7 @@ export class HillsView {
     for (const [u, side] of [[0.35, -c.spread], [0.65, c.spread]]) {
       const x = c.x0 + dx * u + sx * side, z = c.z0 + dz * u + sz * side;
       const y = c.y0 + (c.y1 - c.y0) * u - c.sag * 4 * u * (1 - u);
-      bld.shape(BOX, x, y - 4.2, z, 2.4, 2.6, 2.4, parsed(GONDOLA));
-      bld.shape(ROUND, x, y - 0.4, z, 0.3, 0.3, 0.3, _c.set(CABLE));
+      bld.model('ch_gondola', x, y, z, Math.atan2(dx, dz));
     }
   }
 

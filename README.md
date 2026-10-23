@@ -61,6 +61,16 @@ water, a house or more than 3 m/s is a CRASH. Hold VENT right after the touchdow
 is dragged into a ditch. With the propane gone, holding BURN still gives the last vapour – enough to
 come down ROUGH instead of crashing.
 
+## Models
+
+All models are built in Blender from code: `tools/blender/models.py`. Rebuild them (and their previews) with
+
+```
+"E:\Programy\Blender Foundation\Blender 5.2\blender.exe" --background --factory-startup --python tools/blender/build.py -- previews
+```
+
+which writes `assets/models/models.glb`, `assets/models/models.blend` and `js/models/dims.js`.
+
 ## Tuning checks
 
 ```

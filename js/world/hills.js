@@ -1,5 +1,6 @@
 import { HILLS } from '../config.js';
 import { hash, mulberry32, range } from '../core/utils.js';
+import { footprint, place } from '../models/place.js';
 
 // The base of the hilly countries (Tuscany, the Alps): a height field and land cover from noise, with the
 // things on it – trees, houses, cows, roads and rivers, cable-car wires – kept in square blocks that are
@@ -30,7 +31,7 @@ export class Hills {
       const B = this.B;
       b = {
         i, j, x0: i * B, x1: (i + 1) * B, z0: j * B, z1: (j + 1) * B, filled: false,
-        trees: [], houses: [], cows: [], ribbons: [], rows: [], cables: [], church: null, farm: null,
+        trees: [], houses: [], props: [], cows: [], ribbons: [], rows: [], cables: [], church: null, farm: null,
       };
       this.blocks.set(key, b);
     }
@@ -81,18 +82,19 @@ export class Hills {
     return t;
   }
 
-  // A house standing on the ground: its base at the lowest corner, the walls reaching down to it.
-  house(b, h) {
-    let lo = Infinity, hi = -Infinity;
-    for (const [x, z] of [[h.x0, h.z0], [h.x1, h.z0], [h.x0, h.z1], [h.x1, h.z1], [(h.x0 + h.x1) / 2, (h.z0 + h.z1) / 2]]) {
-      const y = this.height(x, z);
-      lo = Math.min(lo, y);
-      hi = Math.max(hi, y);
-    }
-    h.y = hi;
-    h.sink = hi - lo + 0.5;
-    this.at((h.x0 + h.x1) / 2, (h.z0 + h.z1) / 2).houses.push(h);
-    return h;
+  // A building (a Blender model) standing on the ground at (x, z), its front turned by yaw: its base at the
+  // highest point under it (the model's plinth reaches down the slope), kept by the block it stands in.
+  building(name, x, z, yaw, kind = undefined) {
+    const r = footprint(name, x, z, yaw);
+    let y = -Infinity;
+    for (const [px, pz] of [[r.x0, r.z0], [r.x1, r.z0], [r.x0, r.z1], [r.x1, r.z1], [x, z]]) y = Math.max(y, this.height(px, pz));
+    place(this.at(x, z), name, x, z, yaw, y, kind);
+    return r;
+  }
+
+  // An extra thing to draw, no collisions (a hay bale): kept by the block it lies in.
+  prop(name, x, z, yaw) {
+    this.at(x, z).props.push({ m: name, x, y: this.height(x, z), z, yaw });
   }
 
   // Trees and houses within r of (x, z).
@@ -148,5 +150,5 @@ export class Hills {
   }
 }
 
-// A rectangle centred at (x, z), w across x and d across z.
-export const box = (x, z, w, d) => ({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2 });
+// The yaw that turns a model's front (+z) towards (dx, dz), to the nearest quarter turn.
+export const faceTowards = (dx, dz) => (Math.abs(dx) > Math.abs(dz) ? (dx > 0 ? Math.PI / 2 : -Math.PI / 2) : (dz > 0 ? 0 : Math.PI));

@@ -1,5 +1,6 @@
 import { COAST, POLDER, POWER } from '../config.js';
 import { hash, mulberry32, range, weighted } from '../core/utils.js';
+import { dims, footprint, place } from '../models/place.js';
 
 // The Dutch polder (GDD §8.1), endless and procedural: square blocks between long straight border lines
 // (roads, canals, wide ditches), each block cut into long field strips by narrow ditches, with farms,
@@ -16,8 +17,9 @@ const FIELDS = [
   ['pasture', 0.42], ['grain', 0.12], ['crop', 0.12], ['tulips', 0.12], ['ploughed', 0.1], ['maize', 0.08],
 ];
 const TULIPS = ['#d8443a', '#f2cf3d', '#e77fb0', '#ef8a2f', '#f1eee4', '#8c5fb3', '#d8443a', '#f2cf3d'];
-const BRICK = ['#9b4a33', '#a85a3c', '#8a3f2c', '#b46a48', '#7d3a2a'];
-const ROOFS = ['#3d3d42', '#b5552f', '#4a4a4e', '#9a4a2c'];
+const HOUSES = ['nl_house_a', 'nl_house_b', 'nl_house_c'];
+// the way a building's front faces: towards −x, +x, −z, +z (its yaw)
+const FACING = { '-x': -Math.PI / 2, '+x': Math.PI / 2, '-z': Math.PI, '+z': 0 };
 
 // Where the coast is, for a world whose wind at the start blows towards `heading` (rad): usually somewhere
 // downwind – then the sea is the end of the land – sometimes behind the launch, sometimes nowhere near.
@@ -111,8 +113,9 @@ export class Polder {
         if (!p) continue;
         const cross = c - (n * B + p.off);
         if (Math.abs(cross) > 40) continue;
-        const u = ((((along - p.phase) % S) + S) % S) / S;
-        out.push({ cross, h: POWER.top - POWER.sag * 4 * u * (1 - u) });
+        const u = ((((along - p.phase) % S) + S) % S) / S, sag = POWER.sag * 4 * u * (1 - u);
+        // each conductor where it hangs from the pylon's arms, sagging between the pylons
+        for (const [off, h] of dims('pylon').conductors) out.push({ cross: cross - off, h: h - sag, spread: 0 });
       }
     }
     return out;
@@ -163,7 +166,7 @@ export class Polder {
     const x0 = i * B + this.halfWidth(0, i), x1 = (i + 1) * B - this.halfWidth(0, i + 1);
     const z0 = j * B + this.halfWidth(1, j), z1 = (j + 1) * B - this.halfWidth(1, j + 1);
     const b = {
-      i, j, x0, x1, z0, z1, kind: this.kindOf(i, j, rnd), strips: [], yard: null, trees: [], houses: [], mills: [], cows: [], church: null,
+      i, j, x0, x1, z0, z1, kind: this.kindOf(i, j, rnd), strips: [], yard: null, trees: [], houses: [], props: [], mills: [], cows: [], church: null,
     };
     // strips are separated along the across axis: 0 = across x (ditches run north–south), 1 = across z
     b.across = rnd() < 0.5 ? 0 : 1;
@@ -236,7 +239,9 @@ export class Polder {
         const c = s.f0 + 6, l = l0 + 30 + rnd() * (l1 - l0 - 60);
         const [x, z] = b.across === 0 ? [c, l] : [l, c];
         b.mills.push({ x, z, phase: rnd() * 6 });
-        b.houses.push({ x0: x - 3.5, x1: x + 3.5, z0: z - 3.5, z1: z + 3.5, wall: 19, ridge: 19, kind: 'mill', ridgeAxis: 'z' });
+        for (const p of dims('nl_windmill').parts) {
+          b.houses.push({ x0: x + p.x0, x1: x + p.x1, z0: z + p.z0, z1: z + p.z1, wall: p.wall, ridge: p.ridge, kind: 'mill', ridgeAxis: 'z' });
+        }
         s.mill = true;
       }
     }
@@ -299,54 +304,42 @@ export class Polder {
     b.trees.push(t);
   }
 
-  // A farmhouse near the road end of the yard, a barn behind it, trees around.
+  // A farmhouse near the road end of the yard (its front to the road), a barn behind it, trees around.
   farm(b, s, end, l0, l1, rnd) {
     const w = s.f1 - s.f0;
     const near = end === 0 ? l0 : l1, dirL = end === 0 ? 1 : -1;
-    const house = { w: Math.min(10, w - 6), d: 9, wall: 3.6, ridge: 8.5, wallColor: BRICK[Math.floor(rnd() * 2)], roof: ROOFS[Math.floor(rnd() * 2)] };
-    const barn = { w: Math.min(20, w - 4), d: 13, wall: 4.8, ridge: 10.5, wallColor: rnd() < 0.5 ? '#5b4636' : '#4a5a4a', roof: '#4a4a4e' };
-    const ha = s.f0 + 3 + house.w / 2 + rnd() * Math.max(0, w - house.w - 6);
-    const hl = near + dirL * (5 + house.d / 2);
-    const bl = near + dirL * (5 + house.d + 5 + barn.d / 2);
-    for (const [h, ac, lc] of [[house, ha, hl], [barn, (s.f0 + s.f1) / 2, bl]]) {
-      // the ridge runs along the strip
-      const r = this.rect(b.across, ac - h.w / 2, ac + h.w / 2, lc - h.d / 2, lc + h.d / 2);
-      b.houses.push({ ...r, ...h, ridgeAxis: b.across === 0 ? 'z' : 'x' });
-    }
+    // the front faces the road end of the strip
+    const yaw = b.across === 0 ? FACING[end === 0 ? '-z' : '+z'] : FACING[end === 0 ? '-x' : '+x'];
+    const ha = s.f0 + 8 + rnd() * Math.max(0, w - 16);
+    const at = (a, l) => (b.across === 0 ? [a, l] : [l, a]);
+    place(b, 'nl_farmhouse', ...at(ha, near + dirL * 10), yaw);
+    place(b, 'nl_barn', ...at((s.f0 + s.f1) / 2, near + dirL * 29), yaw);
     b.farm = { x: (b.yard.x0 + b.yard.x1) / 2, z: (b.yard.z0 + b.yard.z1) / 2 };
     // trees along the far side of the yard
-    const far = near + dirL * 40;
-    for (let a = s.f0 + 3; a < s.f1 - 2; a += range(rnd, [6, 9])) {
-      const [x, z] = b.across === 0 ? [a, far] : [far, a];
-      this.tree(b, x, z, rnd, 'round');
-    }
+    const far = near + dirL * 40.5;
+    for (let a = s.f0 + 3; a < s.f1 - 2; a += range(rnd, [6, 9])) this.tree(b, ...at(a, far), rnd, 'round');
   }
 
-  // A village: brick houses in rows along the block's sides, gardens, trees, a church in the middle.
+  // A village: brick houses in rows along the block's sides facing the roads, gardens, trees, a church in the middle.
   village(b, rnd) {
     const { x0, x1, z0, z1 } = b;
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-    // the church: a nave with its ridge along x, a tower at the west end
-    const nave = { x0: cx - 13, x1: cx + 13, z0: cz - 6.5, z1: cz + 6.5, wall: 9, ridge: 16, wallColor: '#8f4a34', roof: '#3d3d42', ridgeAxis: 'x' };
-    const tower = { x0: cx - 20, x1: cx - 13, z0: cz - 3.5, z1: cz + 3.5, wall: 30, ridge: 30, wallColor: '#7f4030', roof: '#2f4f4a', kind: 'tower', spire: 44, ridgeAxis: 'z' };
-    b.houses.push(nave, tower);
-    b.church = { x: cx - 16.5, z: cz };
+    place(b, 'nl_church', cx, cz, 0);
+    b.church = { x: cx, z: cz + 12 };
     // rows of houses facing the four sides, two deep
     for (const [axis, side] of [[0, -1], [0, 1], [1, -1], [1, 1]]) {
-      for (const depth of [9, 31]) {
-        const [from, to] = axis === 0 ? [z0 + 8, z1 - 8] : [x0 + 8, x1 - 8];
-        for (let u = from + rnd() * 4; u < to - 8; u += range(rnd, [12, 16])) {
+      const yaw = FACING[(side < 0 ? '-' : '+') + (axis === 0 ? 'x' : 'z')];
+      const edge = axis === 0 ? (side < 0 ? x0 : x1) : (side < 0 ? z0 : z1);
+      for (const depth of [10, 32]) {
+        const [from, to] = axis === 0 ? [z0 + 10, z1 - 10] : [x0 + 10, x1 - 10];
+        for (let u = from + rnd() * 4; u < to; u += range(rnd, [11, 15])) {
           if (rnd() < 0.12) continue;
-          const w = range(rnd, [7, 10]), d = range(rnd, [8, 11]);
-          const edge = axis === 0 ? (side < 0 ? x0 : x1) : (side < 0 ? z0 : z1);
-          const c = edge - side * (depth + d / 2);
-          const r = axis === 0 ? { x0: c - d / 2, x1: c + d / 2, z0: u, z1: u + w } : { x0: u, x1: u + w, z0: c - d / 2, z1: c + d / 2 };
-          if (b.houses.some((h) => overlap(h, r, 3))) continue;
-          const tall = rnd() < 0.3;
-          b.houses.push({
-            ...r, wall: tall ? 6 : 3.4, ridge: tall ? 11 : 8, wallColor: BRICK[Math.floor(rnd() * BRICK.length)],
-            roof: ROOFS[Math.floor(rnd() * ROOFS.length)], ridgeAxis: axis === 0 ? 'z' : 'x',
-          });
+          const name = HOUSES[Math.floor(rnd() * HOUSES.length)];
+          const c = edge - side * depth;
+          const [x, z] = axis === 0 ? [c, u] : [u, c];
+          const r = footprint(name, x, z, yaw);
+          if (b.houses.some((h) => overlap(h, r, 2.5))) continue;
+          place(b, name, x, z, yaw);
         }
       }
     }
@@ -390,7 +383,9 @@ export class Polder {
       const [from, to] = axis === 0 ? [z0, z1] : [x0, x1];
       for (let u = p.phase + Math.ceil((from - p.phase) / POWER.spacing) * POWER.spacing; u < to; u += POWER.spacing) {
         const [x, z] = axis === 0 ? [c, u] : [u, c];
-        b.houses.push({ x0: x - 2.5, x1: x + 2.5, z0: z - 2.5, z1: z + 2.5, wall: POWER.top + 3, ridge: POWER.top + 3, kind: 'pylon', ridgeAxis: 'z' });
+        for (const p of dims('pylon').parts) {
+          b.houses.push({ x0: x + p.x0, x1: x + p.x1, z0: z + p.z0, z1: z + p.z1, wall: p.wall, ridge: p.ridge, kind: 'pylon', ridgeAxis: 'z' });
+        }
         b.trees = b.trees.filter((t) => Math.abs(t.x - x) > 6 || Math.abs(t.z - z) > 6);
         b.cows = b.cows.filter((t) => Math.abs(t.x - x) > 4 || Math.abs(t.z - z) > 4);
       }

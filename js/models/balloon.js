@@ -1,11 +1,12 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BALLOON } from '../config.js';
+import { modelGeometry } from './library.js';
 
-// A balloon: a lathed envelope with bold gores, the basket with four people, the burner frame, the ropes and
-// the flame. The origin is the basket floor. The envelope can lean over and collapse as the balloon is deflated
-// on the ground. Few draw calls: the envelope, the rest of the body merged into one mesh, the ropes, the flame.
-const GORES = 16;
+// A balloon: the envelope (built here: its gores take the pattern's colours), the basket with its crew and the
+// burner (a Blender model), the flying wires and the flame. The origin is the basket floor. The envelope can
+// lean over and collapse as the balloon is deflated on the ground. Few draw calls: the envelope, the basket,
+// the wires, the flame.
+const GORES = 24;
 const PROFILE = BALLOON.profile;
 // Envelope patterns: alternating gores, a band round the equator, the crown. The first one is the player's.
 export const PATTERNS = [
@@ -23,73 +24,59 @@ export const PATTERNS = [
   { gores: ['#5a3a8a', '#5a3a8a', '#f2c230'], band: '#f2c230', crown: '#5a3a8a' },
 ];
 const MOUTH = '#2b2b2b';
+const TAPE = 0.955;      // the load tapes between the gores pull the fabric in: each gore bulges between them
 
+// The envelope from its profile: rings of 2 × GORES vertices (a seam, a gore's middle, …), each gore a bulging
+// panel in the pattern's colour, a band round the equator, the crown, the dark mouth and a skirt below it.
 function envelope(pattern) {
-  const pts = PROFILE.map(([r, y]) => new THREE.Vector2(r, y));
-  const geo = new THREE.LatheGeometry(pts, GORES).toNonIndexed();
-  const pos = geo.attributes.position;
-  const colors = new Float32Array(pos.count * 3);
-  const c = new THREE.Color();
-  for (let i = 0; i < pos.count; i += 3) {
-    // the triangle's centre decides its colour
-    let x = 0, y = 0, z = 0;
-    for (let k = 0; k < 3; k++) { x += pos.getX(i + k); y += pos.getY(i + k); z += pos.getZ(i + k); }
-    x /= 3; y /= 3; z /= 3;
-    const gore = Math.floor(((Math.atan2(z, x) / (Math.PI * 2) + 1) % 1) * GORES);
-    if (y < 1.2) c.set(MOUTH);
-    else if (y > 9.2 && y < 11.2) c.set(pattern.band);
-    else if (y > 17.3) c.set(pattern.crown);
-    else c.set(pattern.gores[gore % pattern.gores.length]);
-    for (let k = 0; k < 3; k++) c.toArray(colors, (i + k) * 3);
+  // the profile, refined: a ring every metre or so
+  const prof = [];
+  for (let k = 0; k < PROFILE.length - 1; k++) {
+    const [r0, y0] = PROFILE[k], [r1, y1] = PROFILE[k + 1];
+    const n = Math.max(1, Math.round((y1 - y0) / 1.3));
+    for (let i = 0; i < n; i++) prof.push([r0 + (r1 - r0) * i / n, y0 + (y1 - y0) * i / n]);
   }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geo.computeVertexNormals();
-  return geo;
-}
-
-// A primitive with one vertex colour, placed, ready to merge.
-function part(geo, color, x, y, z) {
-  const g = geo.index ? geo.toNonIndexed() : geo;
-  g.translate(x, y, z);
-  const c = new THREE.Color(color), n = g.attributes.position.count;
-  const col = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) c.toArray(col, i * 3);
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'color') g.deleteAttribute(k);
-  return g;
-}
-
-// The basket with four people, the burner frame and coil: one geometry, shared by every balloon.
-function body() {
-  const s = BALLOON.basket;
-  const parts = [
-    part(new THREE.BoxGeometry(s, s * 0.92, s), '#9a7442', 0, s * 0.46, 0),
-    part(new THREE.BoxGeometry(s + 0.08, 0.12, s + 0.08), '#5b3a22', 0, s * 0.92, 0),
-    part(new THREE.BoxGeometry(0.9, 0.18, 0.9), '#3a3a3c', 0, 2.45, 0),
-    part(new THREE.CylinderGeometry(0.28, 0.28, 0.32, 10), '#9a9a9a', 0, 2.7, 0),
-  ];
-  const skin = ['#e0b48c', '#c98f63', '#f0c7a0', '#8d5a3b'];
-  const coats = ['#2f5d8c', '#c8382c', '#3f7a3a', '#e0a020'];
-  for (let k = 0; k < 4; k++) {
-    const qx = (k % 2 ? 1 : -1) * s * 0.24, qz = (k < 2 ? 1 : -1) * s * 0.24;
-    parts.push(part(new THREE.BoxGeometry(0.34, 0.5, 0.26), coats[k], qx, s * 0.92 + 0.12, qz));
-    parts.push(part(new THREE.IcosahedronGeometry(0.13, 0), skin[k], qx, s * 0.92 + 0.5, qz));
+  prof.unshift([1.62, -1.1], [1.55, -0.2]);       // the skirt
+  prof.push(PROFILE[PROFILE.length - 1]);
+  const N = GORES * 2, pos = [], col = [], c = new THREE.Color();
+  const ring = (r, y) => Array.from({ length: N }, (_, i) => {
+    const a = (i / N) * Math.PI * 2, f = i % 2 === 0 ? TAPE : 1;
+    return [Math.cos(a) * r * f, y, Math.sin(a) * r * f];
+  });
+  const rings = prof.map(([r, y]) => ring(r, y));
+  const colour = (gore, y) => {
+    if (y < 0) return pattern.band;
+    if (y < 1.2) return MOUTH;
+    if (y > 9.0 && y < 11.0) return pattern.band;
+    if (y > 17.2) return pattern.crown;
+    return pattern.gores[gore % pattern.gores.length];
+  };
+  const tri = (p, q, r, hex) => {
+    pos.push(...p, ...q, ...r);
+    c.set(hex);
+    for (let k = 0; k < 3; k++) col.push(c.r, c.g, c.b);
+  };
+  for (let k = 0; k < rings.length - 1; k++) {
+    const A = rings[k], B = rings[k + 1], y = (prof[k][1] + prof[k + 1][1]) / 2;
+    for (let i = 0; i < N; i++) {
+      const j = (i + 1) % N, hex = colour(Math.floor(i / 2), y);
+      tri(A[i], B[j], A[j], hex);
+      tri(A[i], B[i], B[j], hex);
+    }
   }
-  const geo = mergeGeometries(parts);
-  for (const p of parts) p.dispose();
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   geo.computeVertexNormals();
   return geo;
 }
 
 function ropes() {
-  const s = BALLOON.basket, pts = [];
-  // the burner poles
-  for (const [px, pz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) pts.push(px * s * 0.45, s * 0.92, pz * s * 0.45, px * 0.4, 2.4, pz * 0.4);
-  // the ropes from the basket corners to the mouth
+  const pts = [];
   for (let k = 0; k < 8; k++) {
     const a = (k / 8) * Math.PI * 2;
-    const cx = Math.sign(Math.cos(a)) * s * 0.48, cz = Math.sign(Math.sin(a)) * s * 0.48;
-    pts.push(cx, s * 0.92, cz, Math.cos(a) * 1.45, BALLOON.mouth + 0.1, Math.sin(a) * 1.45);
+    const cx = Math.sign(Math.round(Math.cos(a) * 10)) * 0.45, cz = Math.sign(Math.round(Math.sin(a) * 10)) * 0.45;
+    pts.push(cx, 2.42, cz, Math.cos(a) * 1.5, BALLOON.mouth + 0.05, Math.sin(a) * 1.5);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
@@ -103,7 +90,7 @@ function sharedParts() {
   const additive = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
   shared = {
     envMat: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
-    bodyGeo: body(),
+    bodyGeo: modelGeometry('basket'),
     bodyMat: new THREE.MeshLambertMaterial({ vertexColors: true }),
     ropeGeo: ropes(),
     ropeMat: new THREE.LineBasicMaterial({ color: '#2a2622' }),

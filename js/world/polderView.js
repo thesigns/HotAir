@@ -1,8 +1,10 @@
 import * as THREE from 'three';
-import { COAST, POLDER, POWER } from '../config.js';
+import { COAST, DETAIL, POLDER, POWER } from '../config.js';
 import { hash, mulberry32 } from '../core/utils.js';
 import { SEA_Y, WATER_Y } from './polder.js';
-import { Builder, ROUND, TOWER, _c, _d, drawCow, drawHouse, drawTree, shadeOf } from './kit.js';
+import { Builder, ROUND, _c, _d, drawCow, drawTree, shadeOf } from './kit.js';
+import { modelGeometry } from '../models/library.js';
+import { DIMS } from '../models/dims.js';
 
 // Draws the polder (js/world/polder.js) in chunks of POLDER.chunk × POLDER.chunk blocks around the balloon:
 // one merged, vertex-coloured, flat-shaded mesh per chunk (one draw call). Built one chunk per frame,
@@ -19,7 +21,6 @@ const COLORS = {
   water: '#6f9cb2',
   bank: '#5f5a3e',
   yard: '#a39a84',
-  pylon: '#9a9ea3',
   wire: '#2d2f33',
   marker: '#ff7a1a',
   sea: '#5d8aa3',
@@ -29,27 +30,15 @@ const COLORS = {
   village: '#7fa452',
   glassWall: '#c9dde3',
   glassRoof: '#e4eff2',
-  mill: '#5c5446',
-  millCap: '#3b3833',
-  sail: '#efe8d6',
 };
 // field types drawn as rows (alternating shades along the strip)
 const ROWS = { grain: 3.2, crop: 2.4, maize: 2.8, ploughed: 2.2 };
 
-// A windmill's sails: four blades on a hub, turning about the local Z axis (shared by every mill).
-const SAILS = (() => {
-  const pos = [];
-  for (let k = 0; k < 4; k++) {
-    const g = new THREE.BoxGeometry(1.7, 11, 0.15).translate(0.5, 6.3, 0).rotateZ((k * Math.PI) / 2).toNonIndexed();
-    pos.push(...g.attributes.position.array);
-  }
-  pos.push(...new THREE.BoxGeometry(0.8, 0.8, 0.8).toNonIndexed().attributes.position.array);
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.computeVertexNormals();
-  return geo;
-})();
-const SAIL_MAT = new THREE.MeshLambertMaterial({ color: COLORS.sail, side: THREE.DoubleSide });
+// The windmill's body and sails (shared by every mill), from the Blender models once they are loaded.
+const MILL = {
+  get body() { return this._body ??= modelGeometry('nl_windmill'); },
+  get sails() { return this._sails ??= modelGeometry('nl_mill_sails'); },
+};
 
 export class PolderView {
   constructor(polder, parent) {
@@ -68,7 +57,7 @@ export class PolderView {
     for (const chunk of this.chunks.values()) {
       for (const m of chunk.userData.mills) {
         m.rotation.y = yaw;
-        m.children[0].rotation.z += spin;
+        m.userData.sails.rotation.z += spin;
       }
     }
   }
@@ -85,24 +74,33 @@ export class PolderView {
       for (let cj = cj0; cj <= cj1; cj++) {
         const d = Math.hypot((ci + 0.5) * S - x, (cj + 0.5) * S - z);
         if (d > R || this.chunks.has(`${ci},${cj}`)) continue;
-        if (all && d < near) this.build(ci, cj);
+        if (all && d < near) this.build(ci, cj, d > DETAIL.near);
         else if (d < bestD) { bestD = d; best = [ci, cj]; }
       }
     }
-    if (best) this.build(...best);
+    if (best) this.build(...best, bestD > DETAIL.near);
+    let up = null, upD = Infinity;
     for (const [key, chunk] of this.chunks) {
       const { ci, cj } = chunk.userData;
-      if (Math.hypot((ci + 0.5) * S - x, (cj + 0.5) * S - z) > R + S) {
-        this.group.remove(chunk);
-        chunk.userData.mesh.geometry.dispose();
-        this.chunks.delete(key);
-      }
+      const d = Math.hypot((ci + 0.5) * S - x, (cj + 0.5) * S - z);
+      if (d > R + S) this.drop(key);
+      else if (chunk.userData.far && d < DETAIL.upgrade && d < upD) { upD = d; up = [ci, cj]; }
     }
+    // a far chunk coming near is built again in full
+    if (up && !best) this.build(...up, false);
   }
 
-  build(ci, cj) {
+  drop(key) {
+    const chunk = this.chunks.get(key);
+    this.group.remove(chunk);
+    chunk.userData.mesh.geometry.dispose();
+    this.chunks.delete(key);
+  }
+
+  build(ci, cj, far = false) {
     const bld = new Builder();
     this.mills = [];
+    this.far = far;
     const n = POLDER.chunk, B = POLDER.block, p = this.polder;
     const x0 = ci * n * B, z0 = cj * n * B, x1 = x0 + n * B, z1 = z0 + n * B;
     for (let i = ci * n; i < ci * n + n; i++) {
@@ -115,17 +113,21 @@ export class PolderView {
     mesh.matrixAutoUpdate = false;
     const chunk = new THREE.Group();
     chunk.add(mesh);
-    // the windmills' sails, on their own (they turn)
+    // the windmills on their own: they turn into the wind, their sails turn with it
+    const mills = [];
     for (const m of this.mills) {
-      const head = new THREE.Group();
-      head.position.set(m.x, 16.2, m.z);
-      const sails = new THREE.Mesh(SAILS, SAIL_MAT);
-      sails.position.z = 3.4;
+      const mill = new THREE.Mesh(MILL.body, this.material);
+      mill.position.set(m.x, 0, m.z);
+      const sails = new THREE.Mesh(MILL.sails, this.material);
+      sails.position.set(...DIMS.nl_windmill.hub);
       sails.rotation.z = m.phase;
-      head.add(sails);
-      chunk.add(head);
+      mill.add(sails);
+      mill.userData.sails = sails;
+      chunk.add(mill);
+      mills.push(mill);
     }
-    chunk.userData = { ci, cj, mesh, mills: chunk.children.slice(1) };
+    chunk.userData = { ci, cj, mesh, mills, far };
+    if (this.chunks.has(`${ci},${cj}`)) this.drop(`${ci},${cj}`);
     this.group.add(chunk);
     this.chunks.set(`${ci},${cj}`, chunk);
   }
@@ -145,37 +147,28 @@ export class PolderView {
     this.banks(bld, axis, at - hw, at + hw, from, to);
   }
 
-  // Pylons from `from` to `to` along a power line at `c` across, and the wires to the next pylon,
-  // with orange marker balls (GDD §7: dangers are visible early).
+  // Pylons from `from` to `to` along a power line at `c` across, and the conductors to the next pylon,
+  // with orange marker balls on the top one (GDD §7: dangers are visible early).
   powerLine(bld, axis, c, phase, from, to) {
-    const S = POWER.spacing, top = POWER.top;
+    const S = POWER.spacing, conductors = DIMS.pylon.conductors;
     // world point from (across, height, along)
     const P = (a, y, l) => (axis === 0 ? [a, y, l] : [l, y, a]);
     const quad = (p0, p1, p2, p3, col) => { bld.tri(...p0, ...p1, ...p2, col); bld.tri(...p0, ...p2, ...p3, col); };
-    const steel = _c.set(COLORS.pylon).clone(), wire = _d.set(COLORS.wire).clone(), orange = new THREE.Color(COLORS.marker);
+    const wire = _d.set(COLORS.wire).clone(), orange = new THREE.Color(COLORS.marker);
+    const sag = (u) => POWER.sag * 4 * u * (1 - u);
     for (let l = phase + Math.ceil((from - phase) / S) * S; l < to; l += S) {
-      // a tapering four-sided tower and its cross-arm
-      const H = top + 3, b0 = 2.4, b1 = 0.6;
-      for (const [sa, sl, ta, tl] of [[-1, -1, 1, -1], [1, -1, 1, 1], [1, 1, -1, 1], [-1, 1, -1, -1]]) {
-        quad(P(c + sa * b0, 0, l + sl * b0), P(c + ta * b0, 0, l + tl * b0), P(c + ta * b1, H, l + tl * b1), P(c + sa * b1, H, l + sl * b1), steel);
-      }
-      const sp = POWER.spread + 0.8;
-      quad(P(c - sp, top + 0.6, l), P(c + sp, top + 0.6, l), P(c + sp, top - 0.2, l), P(c - sp, top - 0.2, l), steel);
-      // the wires: thin vertical ribbons along a sagging curve
+      bld.model('pylon', ...P(c, 0, l), axis === 0 ? 0 : Math.PI / 2);
+      // the conductors: thin vertical ribbons along a sagging curve
       const segs = 10;
-      for (const k of [-1, 0, 1]) {
-        const a = c + k * POWER.spread;
+      for (const [off, h] of conductors) {
+        const a = c + off;
         for (let s = 0; s < segs; s++) {
-          const u0 = s / segs, u1 = (s + 1) / segs;
-          const y0 = top - POWER.sag * 4 * u0 * (1 - u0), y1 = top - POWER.sag * 4 * u1 * (1 - u1);
-          quad(P(a, y0, l + u0 * S), P(a, y1, l + u1 * S), P(a, y1 - 0.14, l + u1 * S), P(a, y0 - 0.14, l + u0 * S), wire);
+          const u0 = s / segs, u1 = (s + 1) / segs, y0 = h - sag(u0), y1 = h - sag(u1);
+          quad(P(a, y0, l + u0 * S), P(a, y1, l + u1 * S), P(a, y1 - 0.12, l + u1 * S), P(a, y0 - 0.12, l + u0 * S), wire);
         }
       }
-      // marker balls on the middle wire
-      for (const u of [0.25, 0.5, 0.75]) {
-        const [x, y, z] = P(c, top - POWER.sag * 4 * u * (1 - u) - 0.3, l + u * S);
-        bld.shape(ROUND, x, y, z, 0.7, 0.7, 0.7, orange);
-      }
+      const [, top] = conductors[conductors.length - 1];
+      for (const u of [0.25, 0.5, 0.75]) bld.shape(ROUND, ...P(c, top - sag(u) - 0.35, l + u * S), 0.65, 0.65, 0.65, orange);
     }
   }
 
@@ -220,13 +213,12 @@ export class PolderView {
         }
       }
     }
-    for (const h of b.houses) {
-      if (h.kind === 'glass') this.greenhouse(bld, h);
-      else if (h.kind !== 'pylon' && h.kind !== 'mill') this.house(bld, h);   // pylons: drawn with their line
-    }
-    for (const m of b.mills) this.mill(bld, m);
-    for (const t of b.trees) this.tree(bld, t, rnd);
-    for (const c of b.cows) this.cow(bld, c);
+    // the buildings (the Blender models; b.houses are only their collision boxes), greenhouses built here
+    for (const p of b.props) bld.model(p.m, p.x, p.y, p.z, p.yaw);
+    for (const h of b.houses) if (h.kind === 'glass') this.greenhouse(bld, h);
+    this.mills.push(...b.mills);
+    for (const t of b.trees) drawTree(bld, t, this.far);
+    if (!this.far) for (const c of b.cows) drawCow(bld, c);
   }
 
   // The coast in a block: the dunes (a height grid), the beach, the sea - across the whole block square,
@@ -303,14 +295,8 @@ export class PolderView {
     }
   }
 
-  // A Dutch windmill: a tapering eight-sided tower and its cap; the sails turn on their own (build()).
-  mill(bld, m) {
-    bld.shape(TOWER, m.x, 0, m.z, 3.6, 15.2, 3.6, _c.set(COLORS.mill));
-    bld.shape(ROUND, m.x, 16.2, m.z, 2.6, 2, 2.6, _c.set(COLORS.millCap));
-    this.mills.push(m);
-  }
 
-  cow(bld, c) { drawCow(bld, c); }
+
 
   field(rect, s, m0, m1) {
     if (s.bands) {
@@ -326,9 +312,7 @@ export class PolderView {
     for (let i = 0; i < n; i++) rect(s.f0 + i * w, s.f0 + (i + 1) * w, m0, m1, 0, _d.copy(base).multiplyScalar(i % 2 ? 0.92 : 1.04));
   }
 
-  house(bld, h) { drawHouse(bld, h); }
 
-  tree(bld, t, rnd) { drawTree(bld, t, rnd); }
 
   dispose() {
     for (const chunk of this.chunks.values()) chunk.userData.mesh.geometry.dispose();

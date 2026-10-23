@@ -1,7 +1,9 @@
 import * as THREE from 'three';
+import { MODELS } from '../models/library.js';
+import { DIMS } from '../models/dims.js';
 
 // The building kit shared by every country's view: a builder of merged, vertex-coloured, flat-shaded triangle
-// lists (one draw call per chunk), unit shapes, and the trees, houses and cows drawn from terrain data.
+// lists (one draw call per chunk) that places the Blender models, and the trees and cows drawn from terrain data.
 
 export const _c = new THREE.Color();
 export const _d = new THREE.Color();
@@ -15,13 +17,6 @@ function template(geo) {
   return a;
 }
 export const ROUND = template(new THREE.IcosahedronGeometry(1, 0));
-// a cheaper crown for the many trees of a wood or a grove
-export const ROUND_LOW = template(new THREE.OctahedronGeometry(1, 0));
-export const CONE = template(new THREE.ConeGeometry(1, 1, 6, 1, true).translate(0, 0.5, 0));
-export const TRUNK = template(new THREE.CylinderGeometry(0.18, 0.26, 1, 5, 1, true).translate(0, 0.5, 0));
-export const TOWER = template(new THREE.CylinderGeometry(0.55, 1, 1, 8, 1, true).translate(0, 0.5, 0));
-export const BOX = template(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0));
-export const PYRAMID = template(new THREE.ConeGeometry(1, 1, 4, 1, true).rotateY(Math.PI / 4).translate(0, 0.5, 0));
 
 export class Builder {
   constructor() { this.p = []; this.c = []; }
@@ -56,6 +51,18 @@ export class Builder {
     }
   }
 
+  // A Blender model (js/models/library.js), turned by yaw about Y, scaled, moved to (x, y, z).
+  model(name, x, y, z, yaw = 0, sx = 1, sy = 1, sz = 1) {
+    const m = MODELS[name];
+    if (!m) return;
+    const c = Math.cos(yaw), s = Math.sin(yaw), P = m.pos, C = m.col;
+    for (let i = 0; i < P.length; i += 3) {
+      const lx = P[i] * sx, ly = P[i + 1] * sy, lz = P[i + 2] * sz;
+      this.p.push(x + lx * c + lz * s, y + ly, z - lx * s + lz * c);
+      this.c.push(C[i], C[i + 1], C[i + 2]);
+    }
+  }
+
   get empty() { return this.p.length === 0; }
 
   build() {
@@ -70,85 +77,22 @@ export class Builder {
 
 export const shadeOf = (list, s) => _c.set(list[Math.floor(s * list.length) % list.length]);
 
-export const TREE_COLORS = {
-  trunk: '#5a4632',
-  crowns: ['#4d7a34', '#5a8a3a', '#3f6b2e', '#628f3f'],
-  pine: ['#33572d', '#3d6334'],
-  cypress: ['#2c4a26', '#33532b'],
-  olive: ['#8a9a6a', '#97a676', '#7d8e60'],
-};
+// A tree from terrain data: { x, z, y (ground, default 0), base, top, r, shade, kind: round | poplar | pine | cypress |
+// olive, low: one of many in a wood – the cheaper model }, drawn with its Blender model scaled to its size.
+const TREE_MODELS = { round: 'tree_round', poplar: 'tree_poplar', pine: 'tree_pine', cypress: 'tree_cypress', olive: 'tree_olive' };
+const LOW_MODELS = { round: 'tree_round_low', pine: 'tree_pine_low', olive: 'tree_olive_low', cypress: 'tree_pine_low', poplar: 'tree_round_low' };
 
-// A tree from terrain data: { x, z, y (ground, default 0), base, top, r, kind: round | poplar | pine | cypress | olive,
-// low: one of many in a wood – a cheaper crown and no trunk }.
-export function drawTree(bld, t, rnd, colors = TREE_COLORS) {
-  const y = t.y ?? 0, crownH = t.top - t.base;
-  if (t.low && (t.kind === 'pine' || t.kind === 'cypress')) {
-    bld.shape(CONE, t.x, t.y ?? 0, t.z, t.r, t.top - (t.y ?? 0), t.r, shadeOf(colors[t.kind], t.shade), 0.06, rnd);
-    return;
-  }
-  if (t.low) {
-    const sy = crownH / 2;
-    bld.shape(ROUND_LOW, t.x, t.base + sy, t.z, t.r, sy, t.r, shadeOf(t.kind === 'olive' ? colors.olive : colors.crowns, t.shade), 0.08, rnd);
-    return;
-  }
-  bld.shape(TRUNK, t.x, y, t.z, 1, t.base - y + crownH * 0.3, 1, _c.set(colors.trunk));
-  if (t.kind === 'pine' || t.kind === 'cypress') {
-    bld.shape(CONE, t.x, t.base, t.z, t.r, crownH, t.r, shadeOf(colors[t.kind], t.shade), 0.06, rnd);
-  } else {
-    const sy = crownH / 2;
-    bld.shape(ROUND, t.x, t.base + sy, t.z, t.r, sy, t.r, shadeOf(t.kind === 'olive' ? colors.olive : colors.crowns, t.shade), 0.08, rnd);
-  }
+// far: a chunk far away – every tree the cheap model, and only every other tree of a wood (a little bigger).
+export function drawTree(bld, t, far = false) {
+  if (far && t.low && t.shade < 0.5) return;
+  const name = (t.low || far ? LOW_MODELS : TREE_MODELS)[t.kind] ?? 'tree_round';
+  const d = DIMS[name], y = t.y ?? 0, s = (t.r / d.r) * (far && t.low ? 1.3 : 1);
+  bld.model(name, t.x, y, t.z, t.shade * Math.PI * 2, s, (t.top - y) / d.h, s);
 }
 
-// A house from terrain data: an axis-aligned box from y (the ground, default 0) with a gable roof whose ridge
-// runs along ridgeAxis; or a tower with a spire (kind 'tower').
-export function drawHouse(bld, h) {
-  const { x0, x1, z0, z1 } = h;
-  const y0 = h.y ?? 0, wall = y0 + h.wall, ridge = y0 + h.ridge;
-  // walls reach a little below the ground on a slope
-  const yb = y0 - (h.sink ?? 0);
-  if (h.kind === 'tower') {
-    bld.shape(BOX, (x0 + x1) / 2, yb, (z0 + z1) / 2, x1 - x0, wall - yb, z1 - z0, _c.set(h.wallColor));
-    bld.shape(PYRAMID, (x0 + x1) / 2, wall, (z0 + z1) / 2, (x1 - x0) * 0.72, h.spire - h.wall, (z1 - z0) * 0.72, _c.set(h.spireColor ?? '#2f4f4a'));
-    return;
-  }
-  const col = _c.set(h.wallColor);
-  bld.wall(x0, z1, x0, z0, yb, wall, col);
-  bld.wall(x1, z0, x1, z1, yb, wall, col);
-  bld.wall(x0, z0, x1, z0, yb, wall, col);
-  bld.wall(x1, z1, x0, z1, yb, wall, col);
-  const roof = _d.set(h.roof);
-  const o = 0.5;   // eaves
-  if (h.ridgeAxis === 'z') {
-    const xm = (x0 + x1) / 2;
-    // gable ends
-    bld.tri(x0, wall, z0, x1, wall, z0, xm, ridge, z0, col);
-    bld.tri(x1, wall, z1, x0, wall, z1, xm, ridge, z1, col);
-    // roof planes
-    bld.tri(x0 - o, wall - 0.3, z0 - o, xm, ridge, z0 - o, xm, ridge, z1 + o, roof);
-    bld.tri(x0 - o, wall - 0.3, z0 - o, xm, ridge, z1 + o, x0 - o, wall - 0.3, z1 + o, roof);
-    bld.tri(x1 + o, wall - 0.3, z1 + o, xm, ridge, z1 + o, xm, ridge, z0 - o, roof);
-    bld.tri(x1 + o, wall - 0.3, z1 + o, xm, ridge, z0 - o, x1 + o, wall - 0.3, z0 - o, roof);
-  } else {
-    const zm = (z0 + z1) / 2;
-    bld.tri(x0, wall, z1, x0, wall, z0, x0, ridge, zm, col);
-    bld.tri(x1, wall, z0, x1, wall, z1, x1, ridge, zm, col);
-    bld.tri(x1 + o, wall - 0.3, z0 - o, x0 - o, wall - 0.3, z0 - o, x0 - o, ridge, zm, roof);
-    bld.tri(x1 + o, wall - 0.3, z0 - o, x0 - o, ridge, zm, x1 + o, ridge, zm, roof);
-    bld.tri(x0 - o, wall - 0.3, z1 + o, x1 + o, wall - 0.3, z1 + o, x1 + o, ridge, zm, roof);
-    bld.tri(x0 - o, wall - 0.3, z1 + o, x1 + o, ridge, zm, x0 - o, ridge, zm, roof);
-  }
-}
+const COWS = ['cow_bw', 'cow_black', 'cow_brown'];
 
-const COWS = [['#1d1d1d', '#f4f2ec'], ['#f4f2ec', '#1d1d1d'], ['#7a4a2a', '#f4f2ec']];
-
-// A cow: a body, a patch and a head – black-and-white or brown.
+// A cow: black-and-white, black or brown, grazing this way or that.
 export function drawCow(bld, c) {
-  const [coat, patch] = COWS[c.coat];
-  const y = c.y ?? 0;
-  const sx = c.turn ? 2.2 : 0.8, sz = c.turn ? 0.8 : 2.2;
-  bld.shape(BOX, c.x, y + 0.55, c.z, sx, 0.75, sz, _c.set(coat));
-  bld.shape(BOX, c.x + (c.turn ? 0.3 : 0), y + 1.05, c.z + (c.turn ? 0 : 0.3), c.turn ? 0.8 : 0.7, 0.3, c.turn ? 0.7 : 0.8, _c.set(patch));
-  const hx = c.turn ? c.x + 1.25 : c.x, hz = c.turn ? c.z : c.z + 1.25;
-  bld.shape(BOX, hx, y + 0.85, hz, 0.45, 0.45, 0.45, _c.set(coat));
+  bld.model(COWS[c.coat], c.x, c.y ?? 0, c.z, (c.turn ? Math.PI / 2 : 0) + ((c.x * 7.3 + c.z * 3.1) % 1.2) - 0.6);
 }

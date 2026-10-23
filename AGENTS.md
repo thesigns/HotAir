@@ -16,6 +16,16 @@ Hot Air is a calm hot-air balloon game: fly as far from the launch field as the 
 - Code style: 2 spaces, semicolons, single quotes, brief comments only where something isn't obvious. Scratch objects used in hot loops live at module level.
 - Tuning belongs in `js/config.js`. The flight model must keep matching the GDD §5.1 table – check with `node tools/feel.mjs` after any change to `BALLOON`, `ATMOS` or `PROPANE`; whole flights over many seeds with `node tools/fly.mjs [flights] [height]`.
 
+## Models (Blender)
+
+- Every model is built from code in **`tools/blender/models.py`** (the source of truth – don't edit `assets/models/models.blend` by hand and expect it to survive) and written by `tools/blender/build.py`:
+  `"E:\Programy\Blender Foundation\Blender 5.2\blender.exe" --background --factory-startup --python tools/blender/build.py -- [preview-dir]`
+  It writes `assets/models/models.glb` (one object per model), `assets/models/models.blend` and **`js/models/dims.js`** (generated: footprints, wall and ridge heights per collision part, tree sizes, the windmill's hub, the pylon's conductors). With a preview directory it renders contact sheets with EEVEE (not Cycles) – look at them after every change.
+- Conventions in Blender: the origin on the ground at the model's centre, the front facing Blender −Y (= +z, south in the game), metres; buildings reach 3 m below the origin (a plinth) so they stand on slopes. Colours are materials from `PALETTE`; low poly, flat; keep the many-times models cheap (trees, cows), `*_low` variants for woods and far chunks.
+- In the game, `js/models/library.js` loads the GLB before the world (main.js), turns materials into vertex colours and keeps each model as a flat triangle list; `Builder.model()` (js/world/kit.js) merges them into the chunks, turned by a yaw and scaled. Only the windmill (it turns into the wind) and its sails, and the balloon's basket, are meshes of their own (`modelGeometry`). The balloon's envelope is built in code (its gores take the pattern).
+- The generators place buildings with `place()` / `footprint()` (js/models/place.js, pure): a prop to draw (`b.props`) and collision boxes from the dims (`b.houses`), turned by a quarter-turn yaw. Hills put a building on the highest ground under it (`Hills.building`).
+- Two detail levels (`DETAIL`): chunks farther than `near` get the cheap trees (only every other tree of a wood), no cows and – in the hills – a coarser ground grid; they are built again in full when the balloon comes within `upgrade`. Keep a whole view around 600k triangles.
+
 ## Conventions
 
 - Units: meters, seconds, radians, kelvin. Y is up, **−Z is north, +X is east**. Headings are clockwise from north: a heading `h` points along `(sin h, 0, −cos h)`; an object facing it has `rotation.y = −h`. Wind directions are meteorological (where the wind comes **from**); the air moves towards `dir + π`.

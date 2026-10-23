@@ -100,13 +100,13 @@ export const COUNTRIES = {
   },
   italy: {
     name: 'Italy', region: 'Tuscany', level: 'Medium', terrain: 'tuscany',
-    fog: 0xe6dac2, sky: 0x86acd2, far: 0x9ea45c, farY: 10,
+    fog: 0xe6dac2, sky: 0x86acd2, far: 0x9ea45c, farY: -5,
     // light, bent by the hills
     wind: { speed: [[2, 6], [6, 12], [9, 17], [12, 22]], veer: [[20, 60], [15, 55], [10, 45]] },
   },
   switzerland: {
     name: 'Switzerland', level: 'Hard', terrain: 'alps',
-    fog: 0xd2dce6, sky: 0x6c9ed4, far: 0x6f8f58, farY: 100,
+    fog: 0xd2dce6, sky: 0x6c9ed4, far: 0x6f8f58, farY: 70,
     // calm in the valleys, stronger over the ridges
     wind: { heights: [0, 80, 220, 380], speed: [[2, 6], [5, 11], [12, 22], [18, 30]] },
   },
@@ -225,11 +225,13 @@ export const POWER = {
   odds: 0.22,           // chance that a road has a power line beside it
   offset: 12,           // the pylons stand this far from the road's edge [m]
   spacing: 260,         // between pylons [m]
-  top: 24,              // the wires hang from here … [m]
-  sag: 5,               // … and sag this much mid-span [m]
-  spread: 5,            // the outer wires this far either side of the middle one [m]
+  sag: 5,               // the conductors (where they hang: the pylon model's dims) sag this much mid-span [m]
   warn: 30,             // the HUD warns when the track and sink rate lead into the wires within this [s]
 };
+
+// Chunks closer than this are built in full; farther ones with the cheap trees and no cows, and built again in
+// full as the balloon comes near (both views).
+export const DETAIL = { near: 700, upgrade: 560 };
 
 export const VIEW = {
   hfovPortrait: 64,     // degrees
